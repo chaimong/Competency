@@ -570,7 +570,9 @@ function buildFramework(){
       active:true, target:ys.target, test:{open:true,n:ITEMS_PER_COMP_DEF,min:45},
       indicators:ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),competencies.length,ci,levels.length,rng))}]))
   }));
-  return {levels,competencies,years};
+  /* เวอร์ชันของกรอบสมรรถนะ ใช้กำกับเอกสารทุกฉบับเพื่อให้ตรวจสอบย้อนหลังได้
+     โหมดจริงจะถูกแทนที่ด้วยค่าจาก Settings.framework_version ของเซิร์ฟเวอร์ */
+  return {levels,competencies,years,version:"2569.1-demo",updatedAt:""};
 }
 const ITEMS_PER_COMP_DEF=30;
 let FW = buildFramework();
@@ -584,7 +586,13 @@ const allInds = (fw,y) => activeComps(fw,y).flatMap(c=>indsOf(fw,y,c.id).map(i=>
 /* ---------- 7. ผู้ใช้งาน ---------- */
 const PASSWORD="ptru1234";
 const ROLE_TH={Administrator:"ผู้ดูแลระบบ",Dean:"คณบดี","Program Chair":"ประธานหลักสูตร",
-  Lecturer:"อาจารย์",Mentor:"ครูพี่เลี้ยง",Director:"ผู้บริหารสถานศึกษา",Student:"นักศึกษา"};
+  Lecturer:"อาจารย์นิเทศก์วิชาชีพครู",MajorAdvisor:"อาจารย์นิเทศก์วิชาเอก",
+  Mentor:"ครูพี่เลี้ยง",Director:"ผู้บริหารสถานศึกษา",Student:"นักศึกษา"};
+/* บทบาทอาจารย์นิเทศก์ทั้งสองประเภททำงานเหมือนกันทุกอย่างในระบบ
+   ต่างกันที่ขอบเขตการนิเทศตามโครงสร้างของคณะ จึงใช้รายการนี้แทนการเขียน "Lecturer" ซ้ำทุกจุด */
+const ADVISOR_ROLES=["Lecturer","MajorAdvisor"];
+const isAdvisor=r=>ADVISOR_ROLES.includes(r);
+/* Director ยังอยู่ในระบบเพื่อรองรับบัญชีเดิม แต่ปิดการสมัครใหม่แล้ว */
 
 const THAI_FIRST=["กมลชนก","ธีรภัทร","ณัฐริกา","ปวริศ","สุพิชญา","อนุชิต","พิมพ์ลภัส","กฤตเมธ",
   "ชนัญชิดา","ภาณุวัฒน์","วรินทร","ศุภกิตติ์","อรอุมา","จิรายุ","เบญญาภา","ณภัทร",
@@ -601,11 +609,17 @@ let USERS=[];
   USERS.push({id:"u3",code:"LEC01",name:"ผศ.ดร. ธนกฤต ชัยบูรณ์",email:"chair@ptru.ac.th",roles:["Program Chair","Lecturer"],program:"EDU2",status:"active"});
   USERS.push({id:"u4",code:"LEC02",name:"อ.ดร. ปิยะนุช แสงทอง",email:"lecturer@ptru.ac.th",roles:["Lecturer"],program:"EDU2",status:"active"});
   USERS.push({id:"u5",code:"MTR01",name:"ครูสมชาย ภูมิใจ",email:"mentor@school.ac.th",roles:["Mentor"],school:SCHOOLS[0],program:"EDU2",status:"active"});
+  USERS.push({id:"u5b",code:"MAJ01",name:"ผศ. วิภาดา เกษมสุข",email:"major@ptru.ac.th",
+    roles:["MajorAdvisor"],program:"EDU2",status:"active"});
   // อาจารย์เพิ่มเติม
   const lecPrograms=["EDU1","EDU3","EDU5","EDU14","EDU15"];
   lecPrograms.forEach((p,i)=>USERS.push({id:"u"+(6+i),code:"LEC0"+(3+i),
     name:"อ. "+THAI_FIRST[10+i]+" "+THAI_LAST[i%THAI_LAST.length],
     email:"lec"+(3+i)+"@ptru.ac.th",roles:["Lecturer"],program:p,status:"active"}));
+  // อาจารย์นิเทศก์วิชาเอกประจำสาขา ใช้เป็นผู้ประเมินช่องทางวิชาเอก
+  lecPrograms.forEach((p,i)=>USERS.push({id:"mj"+i,code:"MAJ0"+(2+i),
+    name:"อ. "+THAI_FIRST[(4+i)%THAI_FIRST.length]+" "+THAI_LAST[(i+6)%THAI_LAST.length],
+    email:"major"+(2+i)+"@ptru.ac.th",roles:["MajorAdvisor"],program:p,status:"active"}));
   // ครูพี่เลี้ยงเพิ่มเติม
   SCHOOLS.slice(1).forEach((s,i)=>USERS.push({id:"m"+i,code:"MTR0"+(2+i),
     name:"ครู"+THAI_FIRST[18+i]+" "+THAI_LAST[(i+3)%THAI_LAST.length],
@@ -715,13 +729,48 @@ const isHttpUrl=u=>/^https?:\/\/[^\s]+\.[^\s]+/i.test(String(u||"").trim());
    จัดรูปแบบให้อัตโนมัติ ดีกว่าขึ้นข้อความผิดพลาดแล้วให้ผู้ใช้แก้เอง */
 const normEmail=v=>String(v||"").trim().toLowerCase();
 const normTel=v=>String(v||"").replace(/[^\d]/g,"");
+/* โดเมนอีเมลของมหาวิทยาลัยที่นักศึกษาต้องใช้สมัคร */
+const STUDENT_EMAIL_DOMAIN="lru.ac.th";
+const isStudentEmail=v=>new RegExp("^[^@\\s]+@"+STUDENT_EMAIL_DOMAIN.replace(/\./g,"\\.")+"$","i").test(String(v||"").trim());
 const userById = id => USERS.find(u=>u.id===id);
 
 /* การตอบสนองรายตัวชี้วัด — สร้างครั้งเดียวจากกรอบตั้งต้น */
-const RESP={}, HIST={}, RESP_L={}, RESP_M={};
-const ASSESSORS=[{key:"lec",store:()=>RESP_L,label:"อาจารย์นิเทศก์"},
-                 {key:"men",store:()=>RESP_M,label:"ครูพี่เลี้ยง"}];
+/* คลังคะแนนรายตัวชี้วัด แยกตามฝ่ายผู้ประเมิน
+   RESP    คะแนนรวมที่ปัดเป็นจำนวนเต็ม ใช้กับแบบจำลองจิตมิติซึ่งต้องการหมวดคะแนนไม่ต่อเนื่อง
+   RESP_L  อาจารย์นิเทศก์วิชาชีพครู · RESP_A อาจารย์นิเทศก์วิชาเอก
+   RESP_M  ครูพี่เลี้ยง             · RESP_S ประเมินตนเอง */
+const RESP={}, HIST={}, RESP_L={}, RESP_A={}, RESP_M={}, RESP_S={};
+
+/** ระเบียนการประเมินที่บันทึกไว้จริง แยกรายครั้ง
+    หนึ่งรายการ = การประเมินหนึ่งสมรรถนะ โดยผู้ประเมินหนึ่งคน ในหนึ่งรอบ
+    เก็บรหัสผู้ประเมิน วันที่ และเวอร์ชันกรอบสมรรถนะไว้ เพื่อให้รายงานอ้างอิงย้อนหลังและตรวจสอบได้
+    ข้อมูลนี้มาจากชีต Assessments โดยตรง ไม่ได้สังเคราะห์ขึ้นตอนวาดหน้าจอ */
+const ASSESS_LOG={};
+
+/** นิยามฝ่ายผู้ประเมินเพียงที่เดียว ทุกหน้าที่แสดงหรือวิเคราะห์คะแนนอ้างจากรายการนี้
+    type ต้องตรงกับ assess_type ที่บันทึกลงชีต Assessments ผ่าน api_assessSubmit */
+const RATERS=[
+  {key:"lec",type:"lecturer",group:"advisor",label:"อาจารย์นิเทศก์วิชาชีพครู",short:"วิชาชีพครู",color:"var(--c1)",store:()=>RESP_L},
+  {key:"maj",type:"major",   group:"advisor",label:"อาจารย์นิเทศก์วิชาเอก",  short:"วิชาเอก",   color:"var(--c5)",store:()=>RESP_A},
+  {key:"men",type:"mentor",  group:"mentor", label:"ครูพี่เลี้ยง",           short:"ครูพี่เลี้ยง",color:"var(--c2)",store:()=>RESP_M},
+  {key:"slf",type:"self",    group:"self",   label:"ประเมินตนเอง",           short:"ตนเอง",     color:"var(--c3)",store:()=>RESP_S},
+];
+/** สามฝ่ายที่ใช้ถ่วงน้ำหนักเท่ากันในคะแนนรวม
+    อาจารย์นิเทศก์นับเป็นฝ่ายเดียว โดยเฉลี่ยวิชาชีพครูกับวิชาเอกเข้าด้วยกันก่อน */
+const SCORE_GROUPS=[
+  {key:"advisor",label:"อาจารย์นิเทศก์",short:"นิเทศก์",color:"var(--c1)",raters:["lec","maj"]},
+  {key:"mentor", label:"ครูพี่เลี้ยง",  short:"พี่เลี้ยง",color:"var(--c2)",raters:["men"]},
+  {key:"self",   label:"ประเมินตนเอง",  short:"ตนเอง",  color:"var(--c3)",raters:["slf"]},
+];
+const SCORE_RULE="คะแนนรวม = (อาจารย์นิเทศก์ + ครูพี่เลี้ยง + ประเมินตนเอง) ÷ 3";
+const SCORE_RULE_NOTE="อาจารย์นิเทศก์คิดจากค่าเฉลี่ยของวิชาชีพครูและวิชาเอก · ฝ่ายที่ยังไม่ได้ประเมินจะไม่ถูกนับ ระบบเฉลี่ยเฉพาะฝ่ายที่มีข้อมูล";
+const raterByKey=k=>RATERS.find(r=>r.key===k);
+const raterByType=t=>RATERS.find(r=>r.type===String(t||"").toLowerCase());
+/* ชื่อเดิม คงไว้เพื่อไม่ให้โค้ดส่วนที่อ้างถึงพัง */
+const ASSESSORS=RATERS;
 const ROUNDS=[{label:"ครั้งที่ 1",when:"ต้นภาคเรียน"},{label:"ครั้งที่ 2",when:"กลางภาคเรียน"},{label:"ครั้งที่ 3",when:"ปลายภาคเรียน"}];
+/* วันที่ประเมินของแต่ละรอบ ประกาศไว้ก่อนตัวสร้างข้อมูลจำลอง เพราะถูกใช้ตอนบันทึกระเบียน */
+const ROUND_DATES=["2026-06-19","2026-07-24","2026-08-28"];
 function seedResponsesFor(u){
   if(!u.roles.includes("Student")||u.linkTo||u.ability===undefined) return;
   const seed=parseInt(u.id.replace(/\D/g,""),10)||1;
@@ -729,27 +778,69 @@ function seedResponsesFor(u){
   const growth=-0.14+grng()*0.60;                // อัตราพัฒนาการต่อรอบ บางคนคงที่หรือถดถอย
   const yc=yearOf(FW,u.year);
   const rounds=ROUNDS.map((r,ri)=>{
-    /* ผู้ประเมินสองฝ่ายให้คะแนนแยกกัน โดยมีความเห็นต่างกันเล็กน้อยตามธรรมชาติ */
-    const rngL=lcg(7000+seed*91+ri*137);          // อาจารย์นิเทศก์
+    /* ผู้ประเมินสี่ฝ่ายให้คะแนนแยกกัน โดยมีความเห็นต่างกันเล็กน้อยตามธรรมชาติ
+       ครูพี่เลี้ยงมักให้สูงกว่าเล็กน้อย ส่วนการประเมินตนเองมักสูงกว่าผู้อื่นชัดเจนกว่า
+       ซึ่งเป็นรูปแบบที่พบทั่วไปและทำให้หน้าความสอดคล้องผู้ประเมินมีอะไรให้ดู */
+    const rngL=lcg(7000+seed*91+ri*137);          // อาจารย์นิเทศก์วิชาชีพครู
+    const rngJ=lcg(8300+seed*53+ri*179);          // อาจารย์นิเทศก์วิชาเอก
     const rngM=lcg(9100+seed*67+ri*211);          // ครูพี่เลี้ยง
+    const rngS=lcg(6100+seed*83+ri*151);          // ประเมินตนเอง
     const ab=u.ability-(ROUNDS.length-1-ri)*growth;
-    const lec={}, men={}, m={};
+    const lec={}, maj={}, men={}, slf={}, m={};
     FW.competencies.forEach((c,ci)=>{
       const org=lcg(500+ci*13); org(); org(); org();
       const off=(org()-.5)*1.2;
       (yc.config[c.id].indicators||[]).forEach(ind=>{
-        const l=clamp(Math.round(ab+off+(rngL()-.5)*1.0),1,5);
-        const mm=clamp(Math.round(ab+off+0.12+(rngM()-.5)*1.1),1,5);   // ครูพี่เลี้ยงให้คะแนนสูงกว่าเล็กน้อย
-        lec[ind.id]=l; men[ind.id]=mm;
-        m[ind.id]=clamp(Math.round((l+mm)/2),1,5);   // ค่าที่ใช้ในการวิเคราะห์ทางจิตมิติ ต้องเป็นจำนวนเต็ม
+        const l =clamp(Math.round(ab+off+(rngL()-.5)*1.0),1,5);
+        const j =clamp(Math.round(ab+off-0.05+(rngJ()-.5)*1.0),1,5);
+        const mm=clamp(Math.round(ab+off+0.12+(rngM()-.5)*1.1),1,5);
+        const ss=clamp(Math.round(ab+off+0.35+(rngS()-.5)*1.2),1,5);
+        lec[ind.id]=l; maj[ind.id]=j; men[ind.id]=mm; slf[ind.id]=ss;
+        /* ค่าที่ใช้ในการวิเคราะห์ทางจิตมิติ ต้องเป็นจำนวนเต็ม
+           คิดจากกติกาเดียวกับที่แสดงบนหน้าจอ คือสามฝ่ายถ่วงน้ำหนักเท่ากัน */
+        m[ind.id]=clamp(Math.round(((l+j)/2+mm+ss)/3),1,5);
       });
     });
-    return {label:r.label,when:r.when,resp:m,lec,men};
+    return {label:r.label,when:r.when,resp:m,lec,maj,men,slf};
   });
   HIST[u.id]=rounds;
-  RESP[u.id]=rounds[rounds.length-1].resp;   // รอบล่าสุดคือผลปัจจุบัน
-  RESP_L[u.id]=rounds[rounds.length-1].lec;
-  RESP_M[u.id]=rounds[rounds.length-1].men;
+  const last=rounds[rounds.length-1];              // รอบล่าสุดคือผลปัจจุบัน
+  RESP[u.id]=last.resp;
+  RESP_L[u.id]=last.lec; RESP_A[u.id]=last.maj;
+  RESP_M[u.id]=last.men; RESP_S[u.id]=last.slf;
+
+  /* บันทึกระเบียนการประเมินพร้อมผู้ประเมินและวันที่ไว้ตั้งแต่ตอนสร้างข้อมูล
+     รายงานจึงอ่านจากระเบียนจริง ไม่ต้องเดาว่าใครเป็นผู้ประเมินตอนวาดหน้าจอ */
+  /* เลือกผู้ประเมินของนักศึกษาคนนี้ ให้ความสำคัญกับผู้ที่มีบทบาทนั้นเป็นบทบาทหลัก
+     ประธานหลักสูตรที่มีบทบาทอาจารย์นิเทศก์พ่วงอยู่จึงไม่ถูกเลือกก่อนอาจารย์นิเทศก์ตัวจริง
+     และกระจายไปตามรหัสนักศึกษา เพื่อให้มีผู้ประเมินหลายคนมีระเบียน ไม่กระจุกที่คนเดียว */
+  const pick=role=>{
+    const inProg=USERS.filter(x=>!x.linkTo&&x.roles.includes(role)&&x.program===u.program);
+    const primary=inProg.filter(x=>x.roles[0]===role);
+    const pool=(primary.length?primary:inProg);
+    const all=pool.length?pool:USERS.filter(x=>!x.linkTo&&x.roles[0]===role);
+    return all.length?all[seed%all.length]:null;
+  };
+  const who={lec:pick("Lecturer"),maj:pick("MajorAdvisor"),men:pick("Mentor"),slf:u};
+  const log=[];
+  rounds.forEach((r,ri)=>{
+    FW.competencies.forEach(c=>{
+      if(!(yc.config[c.id]||{}).active) return;
+      RATERS.forEach(rt=>{
+        const box=r[rt.key]||{};
+        const inds=(yc.config[c.id].indicators||[]).filter(i=>box[i.id]!==undefined);
+        if(!inds.length) return;
+        const by=who[rt.key];
+        log.push({assess_id:"SEED-"+u.id+"-"+(ri+1)+"-"+c.id+"-"+rt.key,
+          comp_id:c.id, type:rt.type, round_no:ri+1,
+          date:ROUND_DATES[ri]||r.when||"",
+          assessor_id:by?by.id:"", assessor_name:by?by.name:rt.label,
+          assessor_role:rt.key==="slf"?"Student":(rt.key==="men"?"Mentor":(rt.key==="maj"?"MajorAdvisor":"Lecturer")),
+          n_items:inds.length, comment:""});
+      });
+    });
+  });
+  ASSESS_LOG[u.id]=log;
 }
 students().forEach(seedResponsesFor);
 
@@ -763,41 +854,64 @@ let EVIDENCE=[
 let PENDING=[
   {id:"p1",name:"ครูวราภรณ์ ทองดี",email:"waraporn@lp.ac.th",tel:"0819112233",school:SCHOOLS[0],aff:"สพฐ.",
    program:"EDU2",group:"วิทยาศาสตร์และเทคโนโลยี",teachLevel:"มัธยมศึกษาตอนต้น",exp:"11",role:"Mentor",at:"2026-08-28"},
-  {id:"p2",name:"นายประสิทธิ์ ชูเกียรติ",email:"prasit@sk.ac.th",tel:"0864455667",school:SCHOOLS[1],aff:"สพฐ.",
-   program:"EDU3",group:"คณิตศาสตร์",teachLevel:"มัธยมศึกษาตอนปลาย",exp:"18",role:"Director",at:"2026-08-30"}];
+  {id:"p2",name:"ผศ.ดร. ประสิทธิ์ ชูเกียรติ",email:"prasit@ptru.ac.th",tel:"0864455667",school:"",aff:"",
+   program:"EDU3",group:"คณิตศาสตร์",teachLevel:"",exp:"18",role:"MajorAdvisor",at:"2026-08-30"}];
 
-let INVITES=[
+/* คงตัวแปรไว้เพื่อไม่ให้โค้ดส่วนอื่นที่อ้างถึงพัง แต่ระบบรหัสเชิญถูกยกเลิกแล้ว
+   ไม่มีหน้าจอหรือคำสั่งใดอ่านหรือเขียนรายการนี้อีก */
+let INVITES_UNUSED=[
   {id:"iv1",code:"PTRU-MTR-8F3K",role:"Mentor",school:SCHOOLS[0],term:"1/2569",expires:"2026-09-30",used:3,quota:5},
   {id:"iv2",code:"PTRU-DIR-2Q9L",role:"Director",school:SCHOOLS[2],term:"1/2569",expires:"2026-09-30",used:0,quota:2}];
 
 /* ---------- 8. ชั้นวิเคราะห์ ---------- */
-/** คะแนนรายสมรรถนะจากผู้ประเมินฝ่ายใดฝ่ายหนึ่ง  src = "lec" หรือ "men" */
+/** คะแนนรายตัวชี้วัดของฝ่ายหนึ่งในรอบหนึ่ง
+    round เป็น undefined หมายถึงใช้รอบล่าสุดจากคลังกลาง */
+function raterResp(sid,key,round){
+  if(round) return round[key]||{};
+  const r=raterByKey(key);
+  return (r?r.store()[sid]:null)||{};
+}
+/** คะแนนรายสมรรถนะจากผู้ประเมินฝ่ายใดฝ่ายหนึ่ง  src คือ key ใน RATERS */
 function compScoreBy(fw,sid,comp,year,src,resp){
-  const r=resp||(src==="lec"?RESP_L[sid]:RESP_M[sid])||{};
+  const r=resp||raterResp(sid,src);
   const v=indsOf(fw,year,comp.id).map(i=>r[i.id]).filter(x=>x!==undefined);
   return v.length?mean(v):null;
 }
-/** คะแนนที่ใช้รายงานแก่นักศึกษา = (คะแนนอาจารย์ + คะแนนครูพี่เลี้ยง) หารสอง
-    หากมีผู้ประเมินฝ่ายเดียว จะใช้ค่าของฝ่ายนั้นและระบุกำกับไว้ */
+/** คะแนนรายสมรรถนะแยกตามฝ่าย พร้อมคะแนนรวมตามกติกาของคณะ
+      คะแนนรวม = (อาจารย์นิเทศก์ + ครูพี่เลี้ยง + ประเมินตนเอง) ÷ 3
+    โดยอาจารย์นิเทศก์ = ค่าเฉลี่ยของวิชาชีพครูกับวิชาเอกเท่าที่มีข้อมูล
+    ฝ่ายที่ยังไม่ได้ประเมินจะไม่ถูกนับ ระบบเฉลี่ยเฉพาะฝ่ายที่มีข้อมูลจริง
+    จึงไม่ลงโทษนักศึกษาที่ยังได้รับการประเมินไม่ครบทุกฝ่าย
+    คืนค่า byRater (รายฝ่ายย่อย 4 ฝ่าย) และ byGroup (สามฝ่ายที่ใช้ถ่วงน้ำหนัก) */
+function compScoreParts(fw,sid,comp,year,round){
+  const byRater={};
+  RATERS.forEach(r=>{ byRater[r.key]=compScoreBy(fw,sid,comp,year,r.key,round?round[r.key]:null); });
+  const byGroup={};
+  SCORE_GROUPS.forEach(g=>{
+    const vals=g.raters.map(k=>byRater[k]).filter(x=>x!==null&&x!==undefined);
+    byGroup[g.key]=vals.length?mean(vals):null;
+  });
+  const present=SCORE_GROUPS.map(g=>byGroup[g.key]).filter(x=>x!==null);
+  return {byRater,byGroup,v:present.length?mean(present):null,n:present.length};
+}
+/** รูปแบบเดิมที่หน้าอื่นเรียกใช้ คง .v .n ไว้ และเพิ่มรายละเอียดรายฝ่าย
+    .l และ .m คงไว้เพื่อความเข้ากันได้ โดย .l หมายถึงฝ่ายอาจารย์นิเทศก์รวม */
 function compScoreAvg(fw,sid,comp,year,round){
-  const rl=round?round.lec:RESP_L[sid], rm=round?round.men:RESP_M[sid];
-  const l=compScoreBy(fw,sid,comp,year,"lec",rl);
-  const m=compScoreBy(fw,sid,comp,year,"men",rm);
-  if(l===null&&m===null) return {v:null,l:null,m:null,n:0};
-  if(l===null) return {v:m,l:null,m:m,n:1};
-  if(m===null) return {v:l,l:l,m:null,n:1};
-  return {v:(l+m)/2,l,m,n:2};
+  const p=compScoreParts(fw,sid,comp,year,round);
+  return Object.assign(p,{l:p.byGroup.advisor,m:p.byGroup.mentor,s:p.byGroup.self});
 }
 function overallAvg(fw,sid,year,round){
   const v=activeComps(fw,year).map(c=>compScoreAvg(fw,sid,c,year,round).v).filter(x=>x!==null);
   return v.length?mean(v):null;
 }
-/** คะแนนรายสมรรถนะที่ใช้แสดงและรายงานทุกหน้า
-    = (คะแนนอาจารย์นิเทศก์ + คะแนนครูพี่เลี้ยง) หารด้วย 2
+/** มีคะแนนของฝ่ายใดฝ่ายหนึ่งอยู่หรือไม่ ใช้ตัดสินว่าจะคำนวณจากรายฝ่ายหรือจาก RESP */
+function hasRaterData(sid){ return RATERS.some(r=>r.store()[sid]); }
+/** คะแนนรายสมรรถนะที่ใช้แสดงและรายงานทุกหน้า ตามกติกา SCORE_RULE
     หมายเหตุ: การวิเคราะห์ทางจิตมิติ (IRT, MIRT, G-DINA) และแบบจำลอง EDM
-    ใช้ค่าที่ปัดเป็นจำนวนเต็มจาก RESP เพราะโมเดลต้องการหมวดคะแนนแบบไม่ต่อเนื่อง */
+    ใช้ค่าที่ปัดเป็นจำนวนเต็มจาก RESP เพราะโมเดลต้องการหมวดคะแนนแบบไม่ต่อเนื่อง
+    RESP ถูกสร้างจากกติกาเดียวกัน ผลจึงสอดคล้องกันทุกหน้า */
 function compScore(fw,sid,comp,year){
-  if(RESP_L[sid]&&RESP_M[sid]) return compScoreAvg(fw,sid,comp,year).v;
+  if(hasRaterData(sid)) return compScoreAvg(fw,sid,comp,year).v;
   const r=RESP[sid]||{};
   const v=indsOf(fw,year,comp.id).map(i=>r[i.id]).filter(x=>x!==undefined);
   return v.length?mean(v):null;
@@ -1035,8 +1149,9 @@ const S={
   usrTab:"list", usrFilter:{role:"all",program:"all",year:"all",q:""}, usrEdit:null,
   asSid:null, asComp:null, asType:"lecturer", asScores:{}, asSaved:false,
   msg:"", err:"", notice:"",
-  regStep:1, regInvite:null, regData:{}, regRef:"", forgotSent:false, otpUser:null,
-  stuStep:1, stuData:{}, stuFound:null, stuNotice:"",
+  forgotSent:false, otpUser:null,
+  /* ระบบสมัครสมาชิกชุดเดียว ใช้สถานะก้อนเดียวแทนของเดิมที่แยกเป็น reg* กับ stu* คนละชุด */
+  reg:{step:1, kind:"student", data:{}, found:null, notice:"", ref:""},
   evNew:{title:"",type:"Lesson Plan",comps:[],mode:"link",link:"",fileName:"",fileMime:"",fileData:""},
   evSid:null, evErr:"",
   pwShow:{},              // ช่องรหัสผ่านที่ผู้ใช้กดให้แสดงตัวอักษร
@@ -1044,24 +1159,30 @@ const S={
 };
 
 const NAV={
-  Administrator:["dashboard","users","invitations","approvals","framework","itemq","psychometrics","edm","xai","irr","progress","diagnostic","reports"],
+  /* ยกเลิกเมนูรหัสเชิญแล้ว การควบคุมสิทธิ์ย้ายไปอยู่ที่เมนู "คำขอสมัคร"
+     ครูพี่เลี้ยงและผู้บริหารสมัครเองได้ แล้วประธานหลักสูตรเป็นผู้อนุมัติ */
+  Administrator:["dashboard","users","approvals","framework","itemq","psychometrics","edm","xai","irr","progress","diagnostic","reports"],
   Dean:["dashboard","analytics","progress","diagnostic","reports"],
-  "Program Chair":["dashboard","users","students","approvals","invitations","analytics","portfolio","progress","diagnostic","reports"],
-  Lecturer:["dashboard","profile","students","assess","analytics","portfolio","progress","diagnostic"],
+  "Program Chair":["dashboard","users","students","approvals","analytics","portfolio","progress","diagnostic","reports"],
+  Lecturer:["dashboard","profile","students","assess","portfolio","progress"],
+  MajorAdvisor:["dashboard","profile","students","assess","portfolio","progress"],
   Mentor:["dashboard","profile","students","assess","portfolio","progress"],
   Director:["dashboard","profile","students","assess","portfolio","progress"],
   Student:["dashboard","profile","exam","progress","myladder","portfolio","assess","diagnostic"],
 };
 /* บทบาทที่มีสิทธิ์ตรวจสอบหลักฐานในแฟ้มสะสมงาน ต้องตรงกับ api_evidenceVerify ใน Code.gs */
-const EV_VERIFIERS=["Lecturer","Mentor","Program Chair","Administrator"];
+const EV_VERIFIERS=["Lecturer","MajorAdvisor","Mentor","Program Chair","Administrator"];
 const canVerifyEvidence=()=>EV_VERIFIERS.includes(S.role);
-const NAV_LABEL={dashboard:"หน้าหลัก",users:"ผู้ใช้งานและกลุ่ม",invitations:"รหัสเชิญ",approvals:"คำขอสมัคร",
+const NAV_LABEL={dashboard:"หน้าหลัก",users:"ผู้ใช้งานและกลุ่ม",approvals:"คำขอสมัคร",
   framework:"กรอบสมรรถนะรายชั้นปี",psychometrics:"โมเดลวัดผล",assess:"การประเมิน",students:"นักศึกษา",
   portfolio:"แฟ้มสะสมงาน",myladder:"พัฒนาการของฉัน",analytics:"วิเคราะห์ภาพรวม",
   diagnostic:"รายงานวินิจฉัยรายบุคคล",progress:"ความก้าวหน้ารายบุคคล",profile:"โปรไฟล์ของฉัน",edm:"Educational Data Mining",xai:"XAI & Fairness",irr:"ความสอดคล้องผู้ประเมิน",itemq:"คุณภาพข้อสอบ",exam:"แบบทดสอบสมรรถนะ",reports:"รายงาน"};
 
-const ASSESS_TYPES=[["self","ประเมินตนเอง"],["peer","ประเมินโดยเพื่อน"],["lecturer","ประเมินโดยอาจารย์นิเทศก์"],
-  ["mentor","ประเมินโดยครูพี่เลี้ยง"],["director","ประเมินโดยผู้บริหารสถานศึกษา"]];
+/* ประเภทการประเมิน สี่ประเภทแรกเป็นฝ่ายที่นับเข้าคะแนนรวมตาม SCORE_RULE
+   peer และ director บันทึกไว้ได้แต่ไม่ถูกนำมาคิดคะแนนรวม */
+const ASSESS_TYPES=[["self","ประเมินตนเอง"],["lecturer","ประเมินโดยอาจารย์นิเทศก์วิชาชีพครู"],
+  ["major","ประเมินโดยอาจารย์นิเทศก์วิชาเอก"],["mentor","ประเมินโดยครูพี่เลี้ยง"],
+  ["peer","ประเมินโดยเพื่อน"],["director","ประเมินโดยผู้บริหารสถานศึกษา"]];
 
 /* ---------- 11. ส่วนประกอบ HTML ---------- */
 function card(title,sub,body,action,pad){
@@ -1334,160 +1455,199 @@ function pwField(id,label,meter,hint){
     ${meter?pwMeter(id):""}
     ${hint?`<div class="hint">${hint}</div>`:""}</div>`;
 }
-function registerView(){
-  const st=S.regStep, d=S.regData;
-  const head=regHead(st,["รหัสเชิญ","ข้อมูลส่วนบุคคล","ข้อมูลการปฏิบัติงาน","ตั้งรหัสผ่าน","ส่งคำขอ"]);
-  let body="";
-  if(st===1) body=`<h2>สมัครสมาชิกสำหรับครูพี่เลี้ยง</h2>
-    <p class="auth-sub">ครูพี่เลี้ยงและผู้บริหารสถานศึกษาต้องใช้รหัสเชิญที่ออกโดยประธานหลักสูตร เพื่อยืนยันว่าเป็นผู้ร่วมนิเทศจริง</p>
-    <div class="field"><label for="ic">รหัสเชิญ</label><input class="inp" id="ic" placeholder="PTRU-MTR-0000" value="${esc(d.code||"")}" data-af data-nore>
-      <div class="hint">${demoHint("รหัสสำหรับทดลอง: PTRU-MTR-8F3K (ครูพี่เลี้ยง) หรือ PTRU-DIR-2Q9L (ผู้บริหารสถานศึกษา)",
-        "พิมพ์ตัวพิมพ์เล็กหรือใหญ่ก็ได้ ระบบจะปรับให้อัตโนมัติ หากยังไม่มีรหัส กรุณาติดต่อประธานหลักสูตร")}</div></div>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="regcheck">ตรวจสอบรหัสเชิญ</button>
-    <div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">กลับไปหน้าเข้าสู่ระบบ</button>
-      <button class="linkbtn" data-act="go" data-v="regstudent">นักศึกษาสมัครที่นี่</button></div>`;
-
-  if(st===2) body=`<h2>ข้อมูลส่วนบุคคล</h2>
-    <p class="auth-sub">รหัสเชิญออกให้แก่ ${esc(S.regInvite.school)} ในบทบาท ${ROLE_TH[S.regInvite.role]||S.regInvite.role} ภาคการศึกษา ${S.regInvite.term}</p>
-    <div class="field"><label for="r_pre">คำนำหน้า</label><select class="inp" id="r_pre">${PREFIX_TCH.map(x=>`<option ${d.pre===x?"selected":""}>${x}</option>`).join("")}</select></div>
-    <div class="field"><label for="r_fn">ชื่อ</label><input class="inp" id="r_fn" value="${esc(d.fn||"")}" data-af data-nore></div>
-    <div class="field"><label for="r_ln">นามสกุล</label><input class="inp" id="r_ln" value="${esc(d.ln||"")}" data-nore></div>
-    <div class="field"><label for="r_tel">หมายเลขโทรศัพท์</label><input class="inp" id="r_tel" inputmode="tel" value="${esc(d.tel||"")}" data-nore></div>
-    <div class="field"><label for="r_em">อีเมล</label><input class="inp" id="r_em" type="email" value="${esc(d.em||"")}" data-nore>
-      <div class="hint">ควรใช้อีเมลของโรงเรียน ระบบจะส่งลิงก์ยืนยันไปที่อีเมลนี้</div></div>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="regnext2">ถัดไป</button>
-    <div class="linkrow"><button class="linkbtn" data-act="regstep" data-v="1">ย้อนกลับ</button></div>`;
-
-  if(st===3) body=`<h2>ข้อมูลการปฏิบัติงาน</h2>
-    <p class="auth-sub">ใช้จับคู่ครูพี่เลี้ยงกับนักศึกษาที่ออกฝึกประสบการณ์ และกำหนดขอบเขตข้อมูลที่ท่านเห็นในระบบ</p>
-    <div class="field"><label for="r_sch">โรงเรียน</label><input class="inp" id="r_sch" value="${esc(d.sch||S.regInvite.school)}" data-nore></div>
-    <div class="field"><label for="r_aff">สังกัด</label><select class="inp" id="r_aff">${AFFILIATIONS.map(x=>`<option ${d.aff===x?"selected":""}>${x}</option>`).join("")}</select></div>
-    <div class="field"><label for="r_prog">สาขาวิชาที่รับนิเทศ</label><select class="inp" id="r_prog">${PROGRAMS.map(x=>`<option value="${x.id}" ${d.prog===x.id?"selected":""}>${x.id} · ${x.th}</option>`).join("")}</select>
-      <div class="hint">ท่านจะเห็นข้อมูลเฉพาะนักศึกษาสาขาวิชานี้เท่านั้น</div></div>
-    <div class="field"><label for="r_grp">กลุ่มสาระการเรียนรู้ที่สอน</label><select class="inp" id="r_grp">${SUBJECT_GROUPS.map(x=>`<option ${d.grp===x?"selected":""}>${x}</option>`).join("")}</select></div>
-    <div class="field"><label for="r_lvl">ระดับชั้นที่สอน</label><select class="inp" id="r_lvl">${TEACH_LEVELS.map(x=>`<option ${d.lvl===x?"selected":""}>${x}</option>`).join("")}</select></div>
-    <div class="field"><label for="r_exp">ประสบการณ์การสอน (ปี)</label><input class="inp" id="r_exp" type="number" min="0" max="50" value="${esc(d.exp||"")}" data-nore></div>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="regnext3">ถัดไป</button>
-    <div class="linkrow"><button class="linkbtn" data-act="regstep" data-v="2">ย้อนกลับ</button></div>`;
-
-  if(st===4) body=`<h2>ตั้งรหัสผ่านและยอมรับเงื่อนไข</h2>
-    <p class="auth-sub">บัญชีนี้ใช้บันทึกผลการประเมินนักศึกษา จึงควรตั้งรหัสผ่านที่คาดเดาได้ยาก</p>
-    ${pwField("r_p1","รหัสผ่าน",true,`อย่างน้อย ${PW_MIN} อักขระ ยิ่งผสมตัวพิมพ์ใหญ่ พิมพ์เล็ก ตัวเลข และสัญลักษณ์ ยิ่งปลอดภัย`)}
-    ${pwField("r_p2","ยืนยันรหัสผ่าน",false,"")}
-    <label class="chk"><input type="checkbox" id="r_c1" data-nore><span>ข้าพเจ้ายอมรับ<b>นโยบายคุ้มครองข้อมูลส่วนบุคคล</b> และยินยอมให้จัดเก็บข้อมูลที่กรอกไว้เพื่อการบริหารจัดการการนิเทศ</span></label>
-    <label class="chk"><input type="checkbox" id="r_c2" data-nore><span>ข้าพเจ้ารับทราบว่าระบบจัดเก็บ<b>วิดีโอการสอนซึ่งอาจปรากฏภาพนักเรียน</b> และจะขอความยินยอมจากโรงเรียนและผู้ปกครองก่อนบันทึกทุกครั้ง</span></label>
-    <label class="chk"><input type="checkbox" id="r_c3" data-nore><span>ข้าพเจ้ารับรองว่าข้อมูลที่กรอกเป็นความจริง และจะรักษาความลับของผลการประเมินนักศึกษา</span></label>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="regnext4">ตรวจสอบข้อมูลก่อนส่ง</button>
-    <div class="linkrow"><button class="linkbtn" data-act="regstep" data-v="3">ย้อนกลับ</button></div>`;
-
-  if(st===5) body=`<h2>ตรวจสอบข้อมูลก่อนส่งคำขอ</h2>
-    <p class="auth-sub">โปรดตรวจความถูกต้อง เมื่อส่งแล้วคำขอจะเข้าสู่คิวอนุมัติของประธานหลักสูตร</p>
-    <table class="tight" style="margin-top:.8rem"><tbody>
-      <tr><td style="color:var(--muted);width:150px">ชื่อ-นามสกุล</td><td>${esc(d.pre+" "+d.fn+" "+d.ln)}</td></tr>
-      <tr><td style="color:var(--muted)">อีเมล</td><td>${esc(d.em)}</td></tr>
-      <tr><td style="color:var(--muted)">โทรศัพท์</td><td>${esc(d.tel)}</td></tr>
-      <tr><td style="color:var(--muted)">บทบาท</td><td>${ROLE_TH[S.regInvite.role]||S.regInvite.role}</td></tr>
-      <tr><td style="color:var(--muted)">โรงเรียน</td><td>${esc(d.sch)} (${esc(d.aff)})</td></tr>
-      <tr><td style="color:var(--muted)">สาขาวิชาที่รับนิเทศ</td><td>${d.prog} · ${esc(progName(d.prog))}</td></tr>
-      <tr><td style="color:var(--muted)">กลุ่มสาระ / ระดับชั้น</td><td>${esc(d.grp)} · ${esc(d.lvl)}</td></tr>
-      <tr><td style="color:var(--muted)">ประสบการณ์</td><td>${esc(d.exp||"—")} ปี</td></tr>
-    </tbody></table>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="regsubmit">ยืนยันและส่งคำขอ</button>
-    <div class="linkrow"><button class="linkbtn" data-act="regstep" data-v="4">ย้อนกลับ</button></div>`;
-
-  if(st===6) body=`<h2>ส่งคำขอเรียบร้อยแล้ว</h2>
-    <p class="auth-sub">เลขที่คำขอ ${esc(S.regRef||"")}</p>
-    <div class="alert alert-ok">ระบบส่งลิงก์ยืนยันอีเมลไปที่ ${esc(d.em)} แล้ว กรุณากดยืนยันภายใน 24 ชั่วโมง</div>
-    <div class="alert alert-info">หลังยืนยันอีเมล คำขอจะเข้าสู่คิวอนุมัติของประธานหลักสูตรสาขา ${esc(progName(d.prog))}
-      โดยปกติใช้เวลาไม่เกิน 2 วันทำการ ท่านจะได้รับแจ้งผลทางอีเมลเมื่อบัญชีพร้อมใช้งาน</div>
-    <button class="btn btn-primary" data-act="go" data-v="login">กลับไปหน้าเข้าสู่ระบบ</button>`;
-
-  /* ทุกขั้นต้องออกจากการสมัครได้ ไม่ใช่ต้องกดย้อนกลับทีละขั้นจนถึงขั้นแรก */
-  const escape=(st>1&&st<6)?`<div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">ยกเลิกและกลับไปหน้าเข้าสู่ระบบ</button></div>`:"";
-  return `<div class="auth">${authArt()}<div class="auth-panel"><div class="auth-form">${st<6?head:""}${body}${escape}${themeCard()}</div></div></div>`;
+/* ระบบสมัครสมาชิกชุดเดียว ใช้ร่วมกันทั้งนักศึกษา ครูพี่เลี้ยง และผู้บริหารสถานศึกษา
+   เดิมมีวิซาร์ดสองชุดที่โครงเหมือนกันเกือบทั้งหมด แยกกันคนละ 5 ขั้น รวม 10 ขั้น
+   และมีขั้นที่ไม่ได้ทำงานจริง คือรหัสเชิญ (ยกเลิกแล้ว) กับรหัสยืนยันอีเมลที่ตรึงเลข 246810 ไว้
+   ชุดใหม่เหลือ 3 ขั้นเท่ากันทุกประเภท และเก็บเฉพาะข้อมูลที่ระบบใช้จริง */
+const REG_KINDS=[
+  ["student","นักศึกษา","นักศึกษาครุศาสตร์ทุกชั้นปี ใช้รหัสนักศึกษาในการสมัคร"],
+  ["lecturer","อาจารย์นิเทศก์วิชาชีพครู","อาจารย์ของคณะที่นิเทศด้านการปฏิบัติวิชาชีพครู"],
+  ["major","อาจารย์นิเทศก์วิชาเอก","อาจารย์ผู้นิเทศด้านเนื้อหาวิชาเอกของนักศึกษา"],
+  ["mentor","ครูพี่เลี้ยง","ครูประจำการที่รับนิเทศนักศึกษาฝึกประสบการณ์"],
+];
+/* บทบาทที่แต่ละประเภทผู้สมัครจะได้รับ ต้องตรงกับ REG_ROLE_ ใน Code.gs */
+const REG_ROLE={student:"Student",lecturer:"Lecturer",major:"MajorAdvisor",mentor:"Mentor"};
+const regIsStudent=()=>S.reg.kind==="student";
+/* อาจารย์นิเทศก์เป็นบุคลากรของคณะ จึงไม่ต้องกรอกข้อมูลโรงเรียน */
+const regIsAdvisor=()=>S.reg.kind==="lecturer"||S.reg.kind==="major";
+function regLabels(){
+  return ["เลือกประเภทผู้สมัคร","ข้อมูลผู้สมัคร","ตั้งรหัสผ่าน"];
 }
 
-/* ============ ระบบสมัครสมาชิก: นักศึกษาทุกชั้นปี ============ */
-function regStudentView(){
-  const st=S.stuStep, d=S.stuData;
-  const head=regHead(st,["ตรวจสอบสิทธิ์","ข้อมูลนักศึกษา","การฝึกประสบการณ์","ตั้งรหัสผ่าน","ยืนยันอีเมล"]);
-  let body="";
-  if(st===1) body=`<h2>สมัครสมาชิกสำหรับนักศึกษา</h2>
-    <p class="auth-sub">เปิดให้นักศึกษาทุกชั้นปีตั้งแต่ชั้นปีที่ 1 ถึง 4 เริ่มจากตรวจสอบสิทธิ์กับฐานข้อมูลทะเบียน</p>
-    <div class="field"><label for="s_code">รหัสนักศึกษา</label><input class="inp" id="s_code" inputmode="numeric" value="${esc(d.code||"")}" data-af data-nore>
-      <div class="hint">${demoHint("รหัสสำหรับทดลอง: "+(students()[0]||{}).code+" (มีในทะเบียนแล้ว) หรือกรอกรหัสอื่นเพื่อทดสอบเส้นทางผู้ที่ยังไม่มีในทะเบียน",
-        "กรอกรหัสนักศึกษาตามที่ปรากฏในบัตรประจำตัว ระบบจะดึงชื่อ สาขาวิชา และชั้นปีมาให้อัตโนมัติ")}</div></div>
-    <div class="field"><label for="s_dob">วันเดือนปีเกิด</label><input class="inp" id="s_dob" type="date" value="${esc(d.dob||"")}" data-nore></div>
+/** ขั้นที่ 1 เลือกประเภทผู้สมัคร นักศึกษาต้องกรอกรหัสนักศึกษาเพื่อดึงข้อมูลจากทะเบียน */
+function regStep1(){
+  const d=S.reg.data;
+  const cards=REG_KINDS.map(([k,th,sub])=>`
+    <button class="btn ${S.reg.kind===k?"btn-primary":"btn-ghost"}" style="width:100%;justify-content:flex-start;text-align:left;margin-top:.45rem;height:auto;padding:.65rem .9rem"
+      data-act="regkind" data-v="${k}">
+      <span><b>${th}</b><span class="sub" style="display:block;font-weight:400">${sub}</span></span></button>`).join("");
+  /* นักศึกษาต้องระบุรหัสนักศึกษา อีเมลของมหาวิทยาลัย และสาขาวิชา ให้ครบก่อนไปขั้นถัดไป
+     สาขาวิชาเป็นตัวกำหนดชุดตัวชี้วัดและขอบเขตผู้นิเทศ จึงต้องเลือกตั้งแต่ต้น */
+  const stu=regIsStudent()?`
+    <div class="field"><label for="rg_code">รหัสนักศึกษา</label>
+      <input class="inp" id="rg_code" inputmode="numeric" value="${esc(d.code||"")}" data-af data-nore>
+      <div class="hint">${demoHint("รหัสสำหรับทดลอง: "+((students()[0]||{}).code||"")+" (มีในทะเบียนแล้ว) หรือกรอกรหัสอื่นเพื่อทดสอบเส้นทางผู้ที่ยังไม่มีในทะเบียน",
+        "ระบบจะดึงชื่อและชั้นปีจากทะเบียนมาให้อัตโนมัติ หากไม่พบ ท่านยังสมัครได้และเจ้าหน้าที่จะตรวจสอบภายหลัง")}</div></div>
+    <div class="field"><label for="rg_em1">อีเมลมหาวิทยาลัย</label>
+      <input class="inp" id="rg_em1" type="email" inputmode="email" placeholder="ชื่อผู้ใช้@${STUDENT_EMAIL_DOMAIN}"
+        value="${esc(d.em||"")}" data-nore>
+      <div class="hint">ต้องเป็นอีเมลของมหาวิทยาลัยที่ลงท้ายด้วย <b>@${STUDENT_EMAIL_DOMAIN}</b> เท่านั้น
+        ใช้เข้าสู่ระบบและรับการแจ้งเตือน</div></div>
+    <div class="field"><label for="rg_prog1">สาขาวิชา</label>
+      <select class="inp" id="rg_prog1">
+        <option value="">— กรุณาเลือกสาขาวิชา —</option>
+        ${PROGRAMS.map(x=>`<option value="${x.id}" ${d.prog===x.id?"selected":""}>${x.id} · ${x.th}</option>`).join("")}</select>
+      <div class="hint">สาขาวิชากำหนดชุดตัวชี้วัดที่ใช้ประเมินและอาจารย์นิเทศก์ที่ดูแลท่าน</div></div>`:"";
+  return `<h2>สมัครสมาชิก</h2>
+    <p class="auth-sub">เลือกประเภทผู้สมัครหนึ่งรายการ ระบบจะถามเฉพาะข้อมูลที่จำเป็นสำหรับประเภทนั้น</p>
+    ${cards}${stu}
+    ${S.reg.notice?`<div class="alert alert-info">${esc(S.reg.notice)}</div>`:""}
     ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    ${S.stuNotice?`<div class="alert alert-info">${esc(S.stuNotice)}</div>`:""}
-    <button class="btn btn-primary" data-act="stucheck">ตรวจสอบสิทธิ์</button>
-    <div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">กลับไปหน้าเข้าสู่ระบบ</button>
-      <button class="linkbtn" data-act="go" data-v="register">ครูพี่เลี้ยงสมัครที่นี่</button></div>`;
+    <button class="btn btn-primary" data-act="regnext1">${regIsStudent()?"ตรวจสอบรหัสและไปต่อ":"ถัดไป"}</button>
+    <div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">กลับไปหน้าเข้าสู่ระบบ</button></div>`;
+}
 
-  if(st===2) body=`<h2>ข้อมูลนักศึกษา</h2>
-    <p class="auth-sub">${S.stuFound?`พบข้อมูลในทะเบียนแล้ว ระบบเติมให้อัตโนมัติ ตรวจสอบและแก้ไขได้`:`ไม่พบรหัสนี้ในทะเบียน คำขอจะถูกส่งให้เจ้าหน้าที่ตรวจสอบก่อนอนุมัติ`}</p>
-    <div class="field"><label for="s_pre">คำนำหน้า</label><select class="inp" id="s_pre">${PREFIX_STU.map(x=>`<option ${d.pre===x?"selected":""}>${x}</option>`).join("")}</select></div>
-    <div class="field"><label for="s_fn">ชื่อ</label><input class="inp" id="s_fn" value="${esc(d.fn||"")}" data-af data-nore></div>
-    <div class="field"><label for="s_ln">นามสกุล</label><input class="inp" id="s_ln" value="${esc(d.ln||"")}" data-nore></div>
-    <div class="field"><label for="s_prog">สาขาวิชา</label><select class="inp" id="s_prog">${PROGRAMS.map(x=>`<option value="${x.id}" ${d.prog===x.id?"selected":""}>${x.id} · ${x.th}</option>`).join("")}</select></div>
-    <div class="field"><label for="s_year">ชั้นปี</label><select class="inp" id="s_year">${[1,2,3,4].map(y=>`<option value="${y}" ${String(d.year)===String(y)?"selected":""}>ชั้นปีที่ ${y}</option>`).join("")}</select>
-      <div class="hint">ชั้นปีกำหนดชุดตัวชี้วัดและระดับเป้าหมายที่ใช้ประเมินท่าน</div></div>
-    <div class="field"><label for="s_em">อีเมล</label><input class="inp" id="s_em" type="email" value="${esc(d.em||"")}" data-nore>
-      <div class="hint">ควรใช้อีเมลของมหาวิทยาลัย (@ptru.ac.th)</div></div>
-    <div class="field"><label for="s_tel">หมายเลขโทรศัพท์</label><input class="inp" id="s_tel" inputmode="tel" value="${esc(d.tel||"")}" data-nore></div>
+/** ขั้นที่ 2 ข้อมูลผู้สมัคร ช่องที่แสดงต่างกันตามประเภทที่เลือกไว้ */
+function regStep2(){
+  const d=S.reg.data, stu=regIsStudent();
+  const prefixes=stu?PREFIX_STU:PREFIX_TCH;
+  const common=`
+    <div class="grid g2" style="gap:.6rem">
+      <div class="field" style="margin-top:0"><label for="rg_pre">คำนำหน้า</label>
+        <select class="inp" id="rg_pre">${prefixes.map(x=>`<option ${d.pre===x?"selected":""}>${x}</option>`).join("")}</select></div>
+      <div class="field" style="margin-top:0"><label for="rg_tel">หมายเลขโทรศัพท์</label>
+        <input class="inp" id="rg_tel" inputmode="tel" value="${esc(d.tel||"")}" data-nore></div>
+      <div class="field" style="margin-top:0"><label for="rg_fn">ชื่อ</label>
+        <input class="inp" id="rg_fn" value="${esc(d.fn||"")}" data-af data-nore></div>
+      <div class="field" style="margin-top:0"><label for="rg_ln">นามสกุล</label>
+        <input class="inp" id="rg_ln" value="${esc(d.ln||"")}" data-nore></div>
+    </div>
+    <div class="field"><label for="rg_em">อีเมล</label>
+      <input class="inp" id="rg_em" type="email" value="${esc(d.em||"")}" ${stu?"readonly":""} data-nore>
+      <div class="hint">${stu?`ยืนยันไว้ในขั้นที่ 1 แล้ว หากต้องการแก้ กรุณาย้อนกลับไปขั้นที่ 1`
+        :(regIsAdvisor()?"ควรใช้อีเมลของมหาวิทยาลัย ใช้เข้าสู่ระบบและรับการแจ้งเตือน"
+        :"ควรใช้อีเมลของโรงเรียน ใช้เข้าสู่ระบบและรับการแจ้งเตือน")}</div></div>`;
+
+  const stuFields=`
+    <div class="grid g2" style="gap:.6rem">
+      <div class="field" style="margin-top:0"><label for="rg_prog">สาขาวิชา</label>
+        <select class="inp" id="rg_prog" disabled>${PROGRAMS.map(x=>`<option value="${x.id}" ${d.prog===x.id?"selected":""}>${x.id} · ${x.th}</option>`).join("")}</select>
+        <div class="hint">เลือกไว้ในขั้นที่ 1 แล้ว</div></div>
+      <div class="field" style="margin-top:0"><label for="rg_year">ชั้นปี</label>
+        <select class="inp" id="rg_year">${[1,2,3,4].map(y=>`<option value="${y}" ${String(d.year)===String(y)?"selected":""}>ชั้นปีที่ ${y}</option>`).join("")}</select></div>
+    </div>
+    <div class="field"><label for="rg_sch">โรงเรียนฝึกประสบการณ์</label>
+      <input class="inp" id="rg_sch" list="rg_schools" value="${esc(d.sch||"")}" placeholder="พิมพ์ชื่อโรงเรียน หรือเลือกจากรายการ" data-nore>
+      <div class="hint">ชั้นปีที่ 1 และ 2 เว้นว่างไว้ได้ ระบุเมื่อออกฝึกประสบการณ์แล้ว</div></div>`;
+
+  /* ครูพี่เลี้ยงสังกัดโรงเรียน จึงต้องกรอกโรงเรียนและสังกัด */
+  const mentorFields=`
+    <div class="field"><label for="rg_sch">โรงเรียน</label>
+      <input class="inp" id="rg_sch" list="rg_schools" value="${esc(d.sch||"")}" placeholder="พิมพ์ชื่อโรงเรียน หรือเลือกจากรายการ" data-nore>
+      <div class="hint">พิมพ์ชื่อโรงเรียนใหม่ได้เอง ไม่จำกัดเฉพาะรายการที่มีอยู่</div></div>
+    <div class="grid g2" style="gap:.6rem">
+      <div class="field" style="margin-top:0"><label for="rg_aff">สังกัด</label>
+        <select class="inp" id="rg_aff">${AFFILIATIONS.map(x=>`<option ${d.aff===x?"selected":""}>${x}</option>`).join("")}</select></div>
+      <div class="field" style="margin-top:0"><label for="rg_prog">สาขาวิชาที่รับนิเทศ</label>
+        <select class="inp" id="rg_prog">${PROGRAMS.map(x=>`<option value="${x.id}" ${d.prog===x.id?"selected":""}>${x.id} · ${x.th}</option>`).join("")}</select></div>
+      <div class="field" style="margin-top:0"><label for="rg_grp">กลุ่มสาระที่สอน</label>
+        <select class="inp" id="rg_grp">${SUBJECT_GROUPS.map(x=>`<option ${d.grp===x?"selected":""}>${x}</option>`).join("")}</select></div>
+      <div class="field" style="margin-top:0"><label for="rg_lvl">ระดับชั้นที่สอน</label>
+        <select class="inp" id="rg_lvl">${TEACH_LEVELS.map(x=>`<option ${d.lvl===x?"selected":""}>${x}</option>`).join("")}</select></div>
+    </div>
+    <div class="field"><label for="rg_exp">ประสบการณ์การสอน (ปี)</label>
+      <input class="inp" id="rg_exp" type="number" min="0" max="50" value="${esc(d.exp||"")}" data-nore></div>`;
+
+  /* อาจารย์นิเทศก์เป็นบุคลากรของคณะ ไม่มีโรงเรียนต้นสังกัด
+     สาขาวิชาที่เลือกกำหนดขอบเขตนักศึกษาที่ท่านเห็นและนิเทศได้ */
+  const advisorFields=`
+    <div class="grid g2" style="gap:.6rem">
+      <div class="field" style="margin-top:0"><label for="rg_prog">สาขาวิชาที่รับผิดชอบนิเทศ</label>
+        <select class="inp" id="rg_prog">${PROGRAMS.map(x=>`<option value="${x.id}" ${d.prog===x.id?"selected":""}>${x.id} · ${x.th}</option>`).join("")}</select></div>
+      <div class="field" style="margin-top:0"><label for="rg_exp">ประสบการณ์การนิเทศ (ปี)</label>
+        <input class="inp" id="rg_exp" type="number" min="0" max="50" value="${esc(d.exp||"")}" data-nore></div>
+    </div>
+    ${S.reg.kind==="major"?`<div class="field"><label for="rg_grp">วิชาเอกที่นิเทศ</label>
+      <select class="inp" id="rg_grp">${SUBJECT_GROUPS.map(x=>`<option ${d.grp===x?"selected":""}>${x}</option>`).join("")}</select>
+      <div class="hint">ใช้จับคู่ท่านกับนักศึกษาที่เรียนวิชาเอกตรงกัน</div></div>`:""}
+    <div class="notebox">ท่านจะเห็นและนิเทศเฉพาะนักศึกษาในสาขาวิชาที่เลือกไว้ตามสิทธิ์ที่ได้รับ
+      หากต้องการเปลี่ยนภายหลัง กรุณาแจ้งผู้ดูแลระบบ</div>`;
+
+  const staffFields=regIsAdvisor()?advisorFields:mentorFields;
+
+  return `<h2>${stu?"ข้อมูลนักศึกษา":"ข้อมูลผู้สมัคร"}</h2>
+    <p class="auth-sub">${stu?(S.reg.found?"พบข้อมูลในทะเบียนแล้ว ระบบเติมให้อัตโนมัติ ตรวจสอบและแก้ไขได้"
+        :"ไม่พบรหัสนี้ในทะเบียน ท่านสมัครต่อได้ เจ้าหน้าที่จะตรวจสอบสถานภาพภายหลัง")
+      :"ข้อมูลนี้ใช้จับคู่ท่านกับนักศึกษาที่ออกฝึกประสบการณ์ และกำหนดขอบเขตข้อมูลที่ท่านเห็นในระบบ"}</p>
+    ${schoolDatalist("rg_schools")}
+    ${common}${stu?stuFields:staffFields}
     ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="stunext2">ถัดไป</button>
-    <div class="linkrow"><button class="linkbtn" data-act="stustep" data-v="1">ย้อนกลับ</button></div>`;
+    <button class="btn btn-primary" data-act="regnext2">ถัดไป</button>
+    <div class="linkrow"><button class="linkbtn" data-act="regback" data-v="1">ย้อนกลับ</button></div>`;
+}
 
-  if(st===3){
-    const needSchool=+d.year>=3;
-    body=`<h2>ข้อมูลการฝึกประสบการณ์วิชาชีพ</h2>
-    <p class="auth-sub">${needSchool?"ชั้นปีที่ 3 และ 4 ต้องระบุโรงเรียนที่ออกฝึกประสบการณ์ เพื่อจับคู่กับครูพี่เลี้ยง"
-      :"ชั้นปีที่ 1 และ 2 ยังไม่ต้องระบุโรงเรียน ระบบจะเปิดให้กรอกเมื่อขึ้นชั้นปีที่ 3"}</p>
-    ${needSchool?`<div class="field"><label for="s_sch">โรงเรียนฝึกประสบการณ์</label>
-      <select class="inp" id="s_sch">${SCHOOLS.map(x=>`<option ${d.sch===x?"selected":""}>${esc(x)}</option>`).join("")}</select></div>
-    <div class="field"><label for="s_term">ภาคการศึกษาที่เริ่มฝึก</label><input class="inp" id="s_term" value="${esc(d.term||"1/2569")}" data-nore></div>`
-      :`<div class="alert alert-info">ไม่มีข้อมูลที่ต้องกรอกในขั้นนี้สำหรับชั้นปีที่ ${esc(d.year)}</div>`}
-    <div class="field"><label for="s_adv">อาจารย์ที่ปรึกษา</label>
-      <select class="inp" id="s_adv"><option value="">— ยังไม่ระบุ —</option>
-      ${USERS.filter(u=>u.roles.includes("Lecturer")).map(u=>`<option value="${u.id}" ${d.adv===u.id?"selected":""}>${esc(u.name)}${u.program?" · "+u.program:""}</option>`).join("")}</select></div>
+/** ขั้นที่ 3 ทุกประเภทตั้งรหัสผ่านเอง แล้วเข้าสู่ระบบได้ทันทีที่สมัครเสร็จ
+    เดิมครูพี่เลี้ยงต้องรอผู้อนุมัติสร้างบัญชีและส่งรหัสผ่านทางอีเมลก่อนจึงจะเข้าระบบได้
+    ตอนนี้บัญชีถูกเปิดใช้งานทันที ส่วนการอนุมัติเปลี่ยนเป็นการรับรองสิทธิ์ย้อนหลัง */
+function regStep3(){
+  const d=S.reg.data, stu=regIsStudent();
+  const summary=stu?"":`
+    <table class="tight" style="margin-top:.6rem"><tbody>
+      <tr><td style="color:var(--muted);width:150px">ชื่อ-นามสกุล</td><td>${esc([d.pre,d.fn,d.ln].filter(Boolean).join(" "))}</td></tr>
+      <tr><td style="color:var(--muted)">บทบาทที่ได้รับ</td><td>${ROLE_TH[REG_ROLE[S.reg.kind]]||"—"}</td></tr>
+      <tr><td style="color:var(--muted)">อีเมล</td><td>${esc(d.em||"")}</td></tr>
+      <tr><td style="color:var(--muted)">โทรศัพท์</td><td>${esc(d.tel||"—")}</td></tr>
+      ${regIsAdvisor()?"":`<tr><td style="color:var(--muted)">โรงเรียน</td><td>${esc(d.sch||"—")} (${esc(d.aff||"—")})</td></tr>`}
+      <tr><td style="color:var(--muted)">สาขาวิชาที่นิเทศ</td><td>${esc(d.prog||"")} · ${esc(progName(d.prog))}</td></tr>
+      ${regIsAdvisor()?(S.reg.kind==="major"?`<tr><td style="color:var(--muted)">วิชาเอกที่นิเทศ</td><td>${esc(d.grp||"—")}</td></tr>`:"")
+        :`<tr><td style="color:var(--muted)">กลุ่มสาระ / ระดับชั้น</td><td>${esc(d.grp||"—")} · ${esc(d.lvl||"—")}</td></tr>`}
+      <tr><td style="color:var(--muted)">ประสบการณ์</td><td>${esc(d.exp||"—")} ปี</td></tr>
+    </tbody></table>`;
+  const pwPart=`${summary}
+    ${pwField("rg_p1","รหัสผ่าน",true,`อย่างน้อย ${PW_MIN} อักขระ กดปุ่ม "แสดง" เพื่อตรวจสิ่งที่พิมพ์ได้`)}
+    ${pwField("rg_p2","ยืนยันรหัสผ่าน",false,"")}
+    ${stu?"":`<div class="notebox">บัญชีของท่านจะใช้งานได้ทันทีหลังสมัคร
+      ประธานหลักสูตรจะตรวจสอบสิทธิ์ย้อนหลังจากรายการคำขอสมัคร</div>`}`;
+  const consents=stu?`
+    <label class="chk"><input type="checkbox" id="rg_c1" ${d.c1?"checked":""} data-nore><span>ข้าพเจ้ายอมรับ<b>นโยบายคุ้มครองข้อมูลส่วนบุคคล</b> และยินยอมให้จัดเก็บผลการประเมินและหลักฐานการเรียนรู้ของข้าพเจ้า</span></label>
+    <label class="chk"><input type="checkbox" id="rg_c2" ${d.c2?"checked":""} data-nore><span>ข้าพเจ้ารับทราบว่าอาจารย์นิเทศก์ ครูพี่เลี้ยง และประธานหลักสูตรของสาขาวิชาที่ข้าพเจ้าสังกัด เข้าถึงผลการประเมินของข้าพเจ้าได้</span></label>`:`
+    <label class="chk"><input type="checkbox" id="rg_c1" ${d.c1?"checked":""} data-nore><span>ข้าพเจ้ายอมรับ<b>นโยบายคุ้มครองข้อมูลส่วนบุคคล</b> และยินยอมให้จัดเก็บข้อมูลที่กรอกไว้เพื่อการบริหารจัดการการนิเทศ</span></label>
+    <label class="chk"><input type="checkbox" id="rg_c2" ${d.c2?"checked":""} data-nore><span>ข้าพเจ้ารับรองว่าข้อมูลที่กรอกเป็นความจริง และจะรักษาความลับของผลการประเมินนักศึกษา</span></label>`;
+  return `<h2>ตั้งรหัสผ่านและยอมรับเงื่อนไข</h2>
+    <p class="auth-sub">${stu?"รหัสผ่านนี้ใช้เข้าถึงผลการประเมินและแฟ้มสะสมงานของท่าน"
+      :"โปรดตรวจความถูกต้องของข้อมูล แล้วตั้งรหัสผ่านสำหรับเข้าสู่ระบบ"}</p>
+    ${pwPart}${consents}
     ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="stunext3">ถัดไป</button>
-    <div class="linkrow"><button class="linkbtn" data-act="stustep" data-v="2">ย้อนกลับ</button></div>`;
-  }
+    <button class="btn btn-primary" data-act="regsubmit">สร้างบัญชีและเข้าใช้งาน</button>
+    <div class="linkrow"><button class="linkbtn" data-act="regback" data-v="2">ย้อนกลับ</button></div>`;
+}
 
-  if(st===4) body=`<h2>ตั้งรหัสผ่านและยอมรับเงื่อนไข</h2>
-    <p class="auth-sub">รหัสผ่านนี้ใช้เข้าถึงผลการประเมินและแฟ้มสะสมงานของท่าน</p>
-    ${pwField("s_p1","รหัสผ่าน",true,`อย่างน้อย ${PW_MIN} อักขระ กดปุ่ม "แสดง" เพื่อตรวจสิ่งที่พิมพ์ได้`)}
-    ${pwField("s_p2","ยืนยันรหัสผ่าน",false,"")}
-    <label class="chk"><input type="checkbox" id="s_c1" data-nore><span>ข้าพเจ้ายอมรับ<b>นโยบายคุ้มครองข้อมูลส่วนบุคคล</b> และยินยอมให้จัดเก็บผลการประเมินและหลักฐานการเรียนรู้ของข้าพเจ้า</span></label>
-    <label class="chk"><input type="checkbox" id="s_c2" data-nore><span>ข้าพเจ้ารับทราบว่าอาจารย์นิเทศก์ ครูพี่เลี้ยง และประธานหลักสูตรของสาขาวิชาที่ข้าพเจ้าสังกัด สามารถเข้าถึงผลการประเมินของข้าพเจ้าได้</span></label>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="stunext4">สร้างบัญชี</button>
-    <div class="linkrow"><button class="linkbtn" data-act="stustep" data-v="3">ย้อนกลับ</button></div>`;
-
-  if(st===5) body=`<h2>ยืนยันอีเมล</h2>
-    <p class="auth-sub">ระบบส่งรหัสยืนยัน 6 หลักไปที่ ${esc(d.em)}</p>
-    <div class="field"><label for="s_otp">รหัสยืนยัน</label><input class="inp" id="s_otp" inputmode="numeric" maxlength="6" placeholder="000000" data-af data-nore>
-      <div class="hint">${demoHint("รหัสสำหรับต้นแบบนี้คือ 246810","กรอกรหัส 6 หลักที่ส่งไปยังอีเมลของท่าน หากไม่พบ กรุณาตรวจในกล่องจดหมายขยะ")}</div></div>
-    ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="stuverify">ยืนยันและเปิดใช้งานบัญชี</button>
-    <div class="linkrow"><button class="linkbtn" data-act="stustep" data-v="4">ย้อนกลับ</button></div>`;
-
-  if(st===6) body=`<h2>สมัครสมาชิกสำเร็จ</h2>
-    <p class="auth-sub">${esc(d.pre+" "+d.fn+" "+d.ln)} · ${d.prog} ${esc(progName(d.prog))} · ชั้นปีที่ ${esc(d.year)}</p>
-    <div class="alert alert-ok">บัญชีพร้อมใช้งานแล้ว เข้าสู่ระบบด้วยอีเมล ${esc(d.em)} และรหัสผ่านที่ตั้งไว้</div>
-    ${S.stuFound?"":`<div class="alert alert-info">เนื่องจากไม่พบรหัสนักศึกษาในทะเบียน บัญชีนี้จะถูกทำเครื่องหมายให้เจ้าหน้าที่ตรวจสอบ
-      ท่านใช้งานได้ตามปกติแต่ผลการประเมินจะยังไม่ถูกนับในรายงานระดับหลักสูตรจนกว่าจะยืนยันสถานภาพ</div>`}
+/** ขั้นสุดท้าย ทุกประเภทได้บัญชีที่ใช้งานได้ทันที จึงบอกวิธีเข้าสู่ระบบให้ชัด */
+function regDone(){
+  const d=S.reg.data, stu=regIsStudent();
+  const uname=S.reg.username||d.code||String(d.em||"").split("@")[0];
+  const who=stu
+    ? `${esc([d.pre,d.fn,d.ln].filter(Boolean).join(" "))} · ${esc(d.prog||"")} ${esc(progName(d.prog))} · ชั้นปีที่ ${esc(d.year)}`
+    : `${esc([d.pre,d.fn,d.ln].filter(Boolean).join(" "))} · ${ROLE_TH[REG_ROLE[S.reg.kind]]||""} · ${esc(d.prog||"")} ${esc(progName(d.prog))}`;
+  const note=stu
+    ? (S.reg.found?"":`<div class="alert alert-info">เนื่องจากไม่พบรหัสนักศึกษาในทะเบียน บัญชีนี้ถูกทำเครื่องหมายให้เจ้าหน้าที่ตรวจสอบ
+        ท่านใช้งานได้ตามปกติ แต่ผลการประเมินจะยังไม่ถูกนับในรายงานระดับหลักสูตรจนกว่าจะยืนยันสถานภาพ</div>`)
+    : `<div class="alert alert-info">ประธานหลักสูตรสาขา ${esc(progName(d.prog))} จะตรวจสอบสิทธิ์ของท่านย้อนหลัง
+        ${S.reg.ref?`เลขที่คำขอ ${esc(S.reg.ref)}`:""} ระหว่างนี้ท่านใช้งานระบบได้ตามปกติ</div>`;
+  return `<h2>สมัครสมาชิกสำเร็จ</h2>
+    <p class="auth-sub">${who}</p>
+    <div class="alert alert-ok">บัญชีพร้อมใช้งานแล้ว เข้าสู่ระบบด้วย<b>ชื่อผู้ใช้ ${esc(uname)}</b>
+      หรืออีเมล ${esc(d.em||"")} พร้อมรหัสผ่านที่ท่านตั้งไว้</div>
+    ${note}
     <button class="btn btn-primary" data-act="go" data-v="login">ไปหน้าเข้าสู่ระบบ</button>`;
+}
 
-  const escape=(st>1&&st<6)?`<div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">ยกเลิกและกลับไปหน้าเข้าสู่ระบบ</button></div>`:"";
-  return `<div class="auth">${authArt()}<div class="auth-panel"><div class="auth-form">${st<6?head:""}${body}${escape}${themeCard()}</div></div></div>`;
+function registerView(){
+  const st=S.reg.step;
+  const body=st>=4?regDone():st===3?regStep3():st===2?regStep2():regStep1();
+  const head=st<4?regHead(st,regLabels()):"";
+  const escape=(st>1&&st<4)?`<div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">ยกเลิกและกลับไปหน้าเข้าสู่ระบบ</button></div>`:"";
+  return `<div class="auth">${authArt()}<div class="auth-panel"><div class="auth-form">${head}${body}${escape}${themeCard()}</div></div></div>`;
 }
 function forgotView(){
   return `<div class="auth">${authArt()}<div class="auth-panel"><div class="auth-form">
@@ -1522,22 +1682,25 @@ function filteredUsers(){
     if(f.program!=="all" && u.program!==f.program) return false;
     if(f.year!=="all" && String(u.year)!==f.year) return false;
     if(f.q){const q=f.q.toLowerCase();
-      if(!(u.name.toLowerCase().includes(q)||String(u.code).toLowerCase().includes(q)||u.email.toLowerCase().includes(q))) return false;}
+      if(!(u.name.toLowerCase().includes(q)||String(u.code||"").toLowerCase().includes(q)
+         ||u.email.toLowerCase().includes(q)||String(u.school||"").toLowerCase().includes(q))) return false;}
     return true;
   });
 }
 function usersList(){
   const f=S.usrFilter;
-  const roleOpts=["all","Student","Lecturer","Program Chair","Mentor","Dean","Administrator"]
+  const roleOpts=["all","Student","Lecturer","MajorAdvisor","Program Chair","Mentor","Director","Dean","Administrator"]
     .map(r=>`<option value="${r}" ${f.role===r?"selected":""}>${r==="all"?"ทุกบทบาท":ROLE_TH[r]||r}</option>`).join("");
   const progOpts=`<option value="all">ทุกสาขาวิชา</option>`+PROGRAMS.map(p=>`<option value="${p.id}" ${f.program===p.id?"selected":""}>${p.id} · ${p.th}</option>`).join("");
   const yearOpts=`<option value="all">ทุกชั้นปี</option>`+[1,2,3,4].map(y=>`<option value="${y}" ${f.year===String(y)?"selected":""}>ชั้นปีที่ ${y}</option>`).join("");
   const list=filteredUsers();
   const rows=list.map(u=>`<tr>
-    <td>${esc(u.name)}<div class="sub">${esc(u.code)} · ${esc(u.email)}</div></td>
+    <td>${esc(u.name)}<div class="sub">${esc(u.email)}</div></td>
+    <td style="font-size:.84rem">${u.code&&u.code!=="—"?`<code>${esc(u.code)}</code>`:`<span class="sub">— ยังไม่ตั้ง —</span>`}</td>
     <td>${u.roles.map(r=>`<span class="tag tag-n">${ROLE_TH[r]||r}</span>`).join(" ")}</td>
-    <td>${u.program?`<span class="tag tag-a">${u.program}</span> <span class="sub">${esc(progName(u.program))}</span>`:(u.school?esc(u.school):"—")}</td>
+    <td>${u.program?`<span class="tag tag-a">${u.program}</span> <span class="sub">${esc(progName(u.program))}</span>`:"—"}</td>
     <td class="num">${u.year?"ปี "+u.year:"—"}</td>
+    <td style="font-size:.84rem">${u.school?esc(u.school):`<span class="sub">—</span>`}</td>
     <td><span class="tag ${u.status==="active"?"tag-ok":"tag-warn"}">${u.status==="active"?"ใช้งานอยู่":"ระงับ"}</span></td>
     <td class="num">
       <button class="btn btn-ghost btn-sm" data-act="usredit" data-v="${u.id}">แก้ไข</button>
@@ -1547,11 +1710,11 @@ function usersList(){
     <select class="inp" style="width:auto" data-act="usrf" data-k="role">${roleOpts}</select>
     <select class="inp" style="width:auto" data-act="usrf" data-k="program">${progOpts}</select>
     <select class="inp" style="width:auto" data-act="usrf" data-k="year">${yearOpts}</select>
-    <input class="inp" style="width:200px" placeholder="ค้นหาชื่อ รหัส หรืออีเมล" value="${esc(f.q)}" data-act="usrq" data-nore>
+    <input class="inp" style="width:220px" placeholder="ค้นหาชื่อ ชื่อผู้ใช้ อีเมล หรือโรงเรียน" value="${esc(f.q)}" data-act="usrq" data-nore>
     <button class="btn btn-ghost btn-sm" data-act="usrclear">ล้างตัวกรอง</button></div>`;
   return card("รายชื่อผู้ใช้งาน",`แสดง ${list.length} จาก ${USERS.filter(u=>!u.linkTo).length} บัญชี`,
     `<div class="card-b" style="border-bottom:1px solid var(--line-soft)">${filters}</div>
-     <div class="scroll-x">${list.length?`<table><thead><tr><th>ชื่อ</th><th>บทบาท</th><th>สาขาวิชา / สังกัด</th><th class="num">ชั้นปี</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+     <div class="scroll-x">${list.length?`<table style="min-width:960px"><thead><tr><th>ชื่อ / อีเมล</th><th>ชื่อผู้ใช้</th><th>บทบาท</th><th>สาขาวิชา</th><th class="num">ชั้นปี</th><th>โรงเรียนฝึกประสบการณ์</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
        :`<div class="empty">ไม่พบผู้ใช้ตามเงื่อนไขที่เลือก</div>`}</div>`,
     `<button class="btn btn-ghost btn-sm" data-act="usrtab" data-v="add">เพิ่มผู้ใช้</button>`,false);
 }
@@ -1567,7 +1730,7 @@ function usersGroups(){
   }).join("");
   const totRow=`<tr><td style="font-weight:600">รวมทุกสาขา</td>${[1,2,3,4].map(y=>`<td class="num" style="font-weight:600">${stu.filter(s=>s.year===y).length}</td>`).join("")}<td class="num" style="font-weight:600">${stu.length}</td></tr>`;
   const pg=scopeProgram();
-  const staff=[["Lecturer","อาจารย์"],["Program Chair","ประธานหลักสูตร"],["Mentor","ครูพี่เลี้ยง"],["Dean","คณบดี"],["Administrator","ผู้ดูแลระบบ"]]
+  const staff=[["Lecturer",ROLE_TH.Lecturer],["MajorAdvisor",ROLE_TH.MajorAdvisor],["Program Chair","ประธานหลักสูตร"],["Mentor","ครูพี่เลี้ยง"],["Director","ผู้บริหารสถานศึกษา"],["Dean","คณบดี"],["Administrator","ผู้ดูแลระบบ"]]
     .map(([r,l])=>`<tr><td>${l}</td><td class="num">${USERS.filter(u=>!u.linkTo&&u.roles.includes(r)&&(!pg||u.program===pg)).length}</td></tr>`).join("");
   return `<div class="grid g2" style="grid-template-columns:1.6fr 1fr;align-items:start">
     ${card("กลุ่มนักศึกษาตามสาขาวิชาและชั้นปี",pg?("แสดงเฉพาะสาขา "+pg+" ตามสิทธิ์ที่ได้รับ"):"ทุกสาขาวิชาในคณะ",
@@ -1575,27 +1738,53 @@ function usersGroups(){
     ${card("กลุ่มบุคลากร","",`<table class="tight"><thead><tr><th>บทบาท</th><th class="num">จำนวน</th></tr></thead><tbody>${staff}</tbody></table>`,"",false)}
   </div>`;
 }
+/** รายชื่อโรงเรียนที่เคยใช้ในระบบ ใช้เป็นตัวช่วยเติมคำ ไม่ใช่รายการปิดตาย
+    ผู้ดูแลระบบพิมพ์ชื่อโรงเรียนใหม่ได้เสมอ */
+function schoolOptions(){
+  const seen={};
+  SCHOOLS.forEach(s=>{ if(s) seen[s]=1; });
+  USERS.forEach(u=>{ if(u.school) seen[u.school]=1; });
+  PENDING.forEach(p=>{ if(p.school) seen[p.school]=1; });
+  return Object.keys(seen).sort();
+}
+function schoolDatalist(id){
+  return `<datalist id="${id}">${schoolOptions().map(s=>`<option value="${esc(s)}"></option>`).join("")}</datalist>`;
+}
 function userForm(u){
   const isNew=!u;
   const d=u||{roles:["Student"],status:"active",program:"EDU1",year:1};
-  const roleSel=["Student","Lecturer","Program Chair","Mentor","Director","Dean","Administrator"]
+  const roleSel=["Student","Lecturer","MajorAdvisor","Program Chair","Mentor","Director","Dean","Administrator"]
     .map(r=>`<option value="${r}" ${d.roles[0]===r?"selected":""}>${ROLE_TH[r]||r}</option>`).join("");
   const progSel=`<option value="">— ไม่ระบุ —</option>`+PROGRAMS.map(p=>`<option value="${p.id}" ${d.program===p.id?"selected":""}>${p.id} · ${p.th}</option>`).join("");
   const yearSel=`<option value="">— ไม่ระบุ —</option>`+[1,2,3,4].map(y=>`<option value="${y}" ${String(d.year)===String(y)?"selected":""}>ชั้นปีที่ ${y}</option>`).join("");
-  const schoolSel=`<option value="">— ไม่ระบุ —</option>`+SCHOOLS.map(s=>`<option value="${esc(s)}" ${d.school===s?"selected":""}>${esc(s)}</option>`).join("");
+  const pwShown=!!S.pwShow.uf_pw;
   return card(isNew?"เพิ่มผู้ใช้ใหม่":"แก้ไขผู้ใช้ · "+esc(d.name),
-    "บทบาทนักศึกษาต้องระบุสาขาวิชาและชั้นปี บทบาทครูพี่เลี้ยงต้องระบุโรงเรียน",
-    `<div class="grid g3" style="gap:.7rem">
-      <div class="field" style="margin-top:0"><label>ชื่อ-นามสกุล</label><input class="inp" id="uf_name" value="${esc(d.name||"")}" data-nore></div>
-      <div class="field" style="margin-top:0"><label>รหัสประจำตัว</label><input class="inp" id="uf_code" value="${esc(d.code||"")}" data-nore></div>
-      <div class="field" style="margin-top:0"><label>อีเมล</label><input class="inp" id="uf_email" type="email" value="${esc(d.email||"")}" data-nore></div>
-      <div class="field" style="margin-top:0"><label>บทบาท</label><select class="inp" id="uf_role">${roleSel}</select></div>
-      <div class="field" style="margin-top:0"><label>สาขาวิชา</label><select class="inp" id="uf_prog">${progSel}</select></div>
-      <div class="field" style="margin-top:0"><label>ชั้นปี</label><select class="inp" id="uf_year">${yearSel}</select></div>
-      <div class="field" style="margin-top:0"><label>โรงเรียนฝึกประสบการณ์</label><select class="inp" id="uf_school">${schoolSel}</select></div>
-      <div class="field" style="margin-top:0"><label>สถานะ</label><select class="inp" id="uf_status">
+    "บทบาทนักศึกษาต้องระบุสาขาวิชาและชั้นปี บทบาทครูพี่เลี้ยงและผู้บริหารสถานศึกษาต้องระบุโรงเรียน",
+    `${schoolDatalist("uf_schools")}
+    <div class="grid g3" style="gap:.7rem">
+      <div class="field" style="margin-top:0"><label for="uf_name">ชื่อ-นามสกุล</label><input class="inp" id="uf_name" value="${esc(d.name||"")}" data-af data-nore></div>
+      <div class="field" style="margin-top:0"><label for="uf_code">ชื่อผู้ใช้ (Username)</label>
+        <input class="inp" id="uf_code" value="${esc(d.code||"")}" placeholder="เช่น 6610000 หรือ somchai.p" data-nore>
+        <div class="hint">ใช้เข้าสู่ระบบแทนอีเมลได้ · สำหรับนักศึกษาให้ใช้รหัสนักศึกษา</div></div>
+      <div class="field" style="margin-top:0"><label for="uf_email">อีเมล</label><input class="inp" id="uf_email" type="email" value="${esc(d.email||"")}" data-nore></div>
+      <div class="field" style="margin-top:0"><label for="uf_role">บทบาท</label><select class="inp" id="uf_role">${roleSel}</select></div>
+      <div class="field" style="margin-top:0"><label for="uf_prog">สาขาวิชา</label><select class="inp" id="uf_prog">${progSel}</select></div>
+      <div class="field" style="margin-top:0"><label for="uf_year">ชั้นปี</label><select class="inp" id="uf_year">${yearSel}</select></div>
+      <div class="field" style="margin-top:0"><label for="uf_school">โรงเรียนฝึกประสบการณ์</label>
+        <input class="inp" id="uf_school" list="uf_schools" value="${esc(d.school||"")}" placeholder="พิมพ์ชื่อโรงเรียน หรือเลือกจากรายการ" data-nore>
+        <div class="hint">พิมพ์ชื่อโรงเรียนใหม่ได้เอง ไม่จำกัดเฉพาะรายการที่มีอยู่</div></div>
+      <div class="field" style="margin-top:0"><label for="uf_status">สถานะ</label><select class="inp" id="uf_status">
         <option value="active" ${d.status==="active"?"selected":""}>ใช้งานอยู่</option>
         <option value="suspended" ${d.status!=="active"?"selected":""}>ระงับ</option></select></div>
+      <div class="field" style="margin-top:0"><label for="uf_pw">${isNew?"รหัสผ่าน":"ตั้งรหัสผ่านใหม่"}</label>
+        <div style="position:relative">
+          <input class="inp" id="uf_pw" type="${pwShown?"text":"password"}" style="padding-right:4.2rem"
+            placeholder="${isNew?`อย่างน้อย ${PW_MIN} อักขระ`:"เว้นว่างไว้หากไม่ต้องการเปลี่ยน"}" data-nore>
+          <button type="button" class="linkbtn" data-act="pwtoggle" data-v="uf_pw"
+            style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);font-size:.78rem">${pwShown?"ซ่อน":"แสดง"}</button>
+        </div>
+        <div class="hint">${isNew?`เว้นว่างไว้ ระบบจะสุ่มรหัสผ่านชั่วคราวและส่งทางอีเมลให้`
+          :"กรอกเมื่อผู้ใช้ลืมรหัสผ่านและต้องการให้ท่านตั้งใหม่ให้"}</div></div>
     </div>
     ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
     <div class="row" style="margin-top:1rem">
@@ -1999,9 +2188,46 @@ function progressPage(){
     ${card(`สิ่งที่ต้องพัฒนาเพื่อไปสู่ระดับที่ ${nextLv} · ${FW.levels[nextLv-1].th}`,
       "เรียงจากสมรรถนะที่ห่างจากเป้าหมายมากที่สุด",todo)}
 
-    <div class="notebox">รายงานนี้ใช้ข้อมูลจำลองเพื่อสาธิตโครงสร้าง การใช้งานจริงต้องดึงผลการประเมินที่บันทึกไว้จริงในแต่ละรอบ
-      และควรระบุผู้ประเมิน วันที่ประเมิน และเวอร์ชันของกรอบสมรรถนะกำกับไว้ในเอกสารทุกฉบับ</div>
+    ${progressAudit(st)}
+    <div class="notebox">${docStamp("ที่มาของข้อมูล: ชีต Assessments และ AssessmentScores")}</div>
   </div>`;
+}
+
+/** ที่มาของข้อมูลในรายงาน แสดงระเบียนการประเมินที่บันทึกไว้จริง
+    ผู้อ่านรายงานตรวจสอบได้ว่าคะแนนแต่ละรอบมาจากใคร ประเมินเมื่อใด และครอบคลุมกี่ตัวชี้วัด */
+function progressAudit(st){
+  const recs=assessRecords(st.id);
+  if(!recs.length) return card("ที่มาของผลการประเมิน","",
+    `<div class="empty">ยังไม่มีระเบียนการประเมินของผู้เรียนรายนี้</div>`,"",false);
+
+  /* สรุปรายรอบ แยกตามฝ่ายผู้ประเมิน */
+  const byRound={};
+  recs.forEach(r=>{
+    const k=r.round;
+    const R=byRound[k]=byRound[k]||{label:r.roundLabel,dates:new Set(),raters:{}};
+    if(r.date) R.dates.add(r.date);
+    const t=R.raters[r.kind]=R.raters[r.kind]||{by:new Set(),comps:0,items:0,sum:0,n:0};
+    t.by.add(r.by); t.comps++; t.items+=r.nItems||0; t.sum+=r.v; t.n++;
+  });
+  const rows=Object.keys(byRound).sort((a,b)=>a-b).map(k=>{
+    const R=byRound[k];
+    const dates=[...R.dates].sort();
+    const cells=RATERS.map(rt=>{
+      const t=R.raters[rt.type];
+      if(!t) return `<td class="sub" style="font-size:.8rem">— ยังไม่ประเมิน —</td>`;
+      return `<td style="font-size:.8rem">${esc([...t.by].join(", "))}
+        <div class="sub">${t.comps} สมรรถนะ · เฉลี่ย ${fmt(t.sum/t.n)}</div></td>`;
+    }).join("");
+    return `<tr><td style="white-space:nowrap">${esc(R.label)}
+      <div class="sub">${dates.length?esc(dates[0]+(dates.length>1?" ถึง "+dates[dates.length-1]:"")):"ไม่ระบุวันที่"}</div></td>
+      ${cells}</tr>`;
+  }).join("");
+
+  return card("ที่มาของผลการประเมิน",
+    `ระเบียนจริง ${recs.length} รายการ จากชีต Assessments · ระบุผู้ประเมินและวันที่ประเมินทุกรายการ`,
+    `<div class="scroll-x"><table class="tight" style="min-width:780px"><thead><tr>
+      <th>รอบการประเมิน</th>${RATERS.map(r=>`<th>${esc(r.label)}</th>`).join("")}
+    </tr></thead><tbody>${rows}</tbody></table></div>`,"",false);
 }
 
 /* ============================================================
@@ -2010,22 +2236,45 @@ function progressPage(){
 function myUser(){ return userById(S.user.linkTo||S.user.id)||S.user; }
 
 /** ระเบียนการประเมินของนักศึกษาหนึ่งคน สังเคราะห์จากผลที่บันทึกไว้แต่ละรอบ */
-const ROUND_DATES=["2026-06-19","2026-07-24","2026-08-28"];
-const ASSESSOR_KINDS=[["self","ประเมินตนเอง"],["lecturer","ประเมินโดยอาจารย์นิเทศก์"],["mentor","ประเมินโดยครูพี่เลี้ยง"]];
+/** ระเบียนการประเมินที่บันทึกไว้จริงของนักศึกษาหนึ่งคน
+    อ่านจาก ASSESS_LOG ซึ่งมาจากชีต Assessments โดยตรง
+    แต่ละรายการมีผู้ประเมิน วันที่ประเมิน รอบ และประเภทการประเมินกำกับครบ
+    คะแนนคำนวณจากตัวชี้วัดที่ผู้ประเมินรายนั้นให้ไว้จริงในรอบนั้น */
 function assessRecords(sid){
-  const st=userById(sid); if(!st||!HIST[sid]) return [];
-  const y=st.year, comps=activeComps(FW,y);
-  const lect=USERS.find(u=>u.roles.includes("Lecturer")&&u.program===st.program);
-  const ment=USERS.find(u=>u.roles.includes("Mentor")&&u.program===st.program);
-  const out=[];
-  HIST[sid].forEach((r,ri)=>comps.forEach((c,ci)=>{
-    const v=compScoreAvg(FW,st.id,c,y,r).v; if(v===null) return;
-    const kind=ASSESSOR_KINDS[(ci+ri)%3];
-    out.push({sid,student:st.name,round:ri,roundLabel:r.label,when:r.when,date:ROUND_DATES[ri]||"",
-      comp:c,v,kind:kind[0],type:kind[1],target:cfgOf(FW,y,c.id).target,
-      by:kind[0]==="self"?st.name:(kind[0]==="lecturer"?(lect?lect.name:"อาจารย์นิเทศก์"):(ment?ment.name:"ครูพี่เลี้ยง"))});
-  }));
-  return out;
+  const st=userById(sid); if(!st) return [];
+  const y=st.year;
+  const rounds=HIST[sid]||[];
+  const typeLabel=Object.fromEntries(ASSESS_TYPES);
+  return (ASSESS_LOG[sid]||[]).map(a=>{
+    const c=FW.competencies.find(x=>x.id===a.comp_id); if(!c) return null;
+    const rater=raterByType(a.type); if(!rater) return null;
+    const ri=rounds.findIndex(r=>String(r.no||0)===String(a.round_no));
+    const round=ri>=0?rounds[ri]:null;
+    const v=compScoreBy(FW,sid,c,y,rater.key,round?round[rater.key]:null);
+    if(v===null) return null;
+    const by=(a.assessor_id&&userById(a.assessor_id))||null;
+    return {sid,student:st.name,round:ri>=0?ri:(Number(a.round_no)||1)-1,
+      roundLabel:round?round.label:("ครั้งที่ "+(a.round_no||1)),
+      when:round?round.when:"", date:a.date||"",
+      comp:c, v, kind:a.type, type:typeLabel[a.type]||a.type,
+      target:cfgOf(FW,y,c.id).target,
+      by:by?by.name:(a.assessor_name||rater.label),
+      byId:a.assessor_id||"", byRole:a.assessor_role||"",
+      assessId:a.assess_id||"", nItems:a.n_items||0};
+  }).filter(Boolean).sort((x,z)=>(x.round-z.round)||String(x.comp.code).localeCompare(String(z.comp.code)));
+}
+
+/** ข้อความกำกับเอกสาร ใช้ท้ายรายงานทุกฉบับ
+    ระบุเวอร์ชันกรอบสมรรถนะ วันที่ออกเอกสาร และผู้สั่งพิมพ์ เพื่อให้ตรวจสอบย้อนหลังได้ */
+function docStamp(extra){
+  const bits=[
+    "กรอบสมรรถนะเวอร์ชัน "+esc(FW.version||"—"),
+    FW.updatedAt?("ปรับปรุงกรอบล่าสุด "+esc(String(FW.updatedAt).slice(0,10))):"",
+    "ออกเอกสาร "+new Date().toISOString().slice(0,10),
+    S.user?("โดย "+esc(S.user.name)+(S.role?" ("+(ROLE_TH[S.role]||S.role)+")":"")):"",
+    extra||""
+  ].filter(Boolean);
+  return bits.join(" · ");
 }
 
 function pfHead(u){
@@ -2051,14 +2300,20 @@ function pfHead(u){
     </div></div>`;
 }
 
+/* บทบาทที่ทำหน้าที่ประเมิน จึงควรเห็นความสอดคล้องของตนเองเทียบกับผู้ประเมินฝ่ายอื่น */
+const RATER_ROLES=["Lecturer","MajorAdvisor","Mentor","Director"];
 function profilePage(){
   const u=myUser();
-  const tabs=[["info","ข้อมูลส่วนตัว"],["security","ความปลอดภัย"],["history","ประวัติการประเมิน"],
-    ["manual","คู่มือการประเมินสมรรถนะ"],["docs","เอกสารและการแจ้งเตือน"]]
-    .map(([k,l])=>`<button class="${S.pfTab===k?"on":""}" data-act="pftab" data-v="${k}">${l}</button>`).join("");
+  const isRater=RATER_ROLES.includes(S.role);
+  const list=[["info","ข้อมูลส่วนตัว"],["security","ความปลอดภัย"],["history","ประวัติการประเมิน"]]
+    .concat(isRater?[["irr","ความสอดคล้องของผู้ประเมิน"]]:[])
+    .concat([["manual","คู่มือการประเมินสมรรถนะ"],["docs","เอกสารและการแจ้งเตือน"]]);
+  if(!list.some(([k])=>k===S.pfTab)) S.pfTab="info";
+  const tabs=list.map(([k,l])=>`<button class="${S.pfTab===k?"on":""}" data-act="pftab" data-v="${k}">${l}</button>`).join("");
   let body="";
   if(S.pfTab==="security") body=pfSecurity(u);
   else if(S.pfTab==="history") body=pfHistory(u);
+  else if(S.pfTab==="irr") body=pfRaterIRR(u);
   else if(S.pfTab==="manual") body=pfManual(u);
   else if(S.pfTab==="docs") body=pfDocs(u);
   else body=pfInfo(u);
@@ -2327,6 +2582,148 @@ function pfDocs(u){
 }
 
 /* ---------- 17. แดชบอร์ดและหน้าอื่น ---------- */
+/* ============================================================
+   ชั้นวิเคราะห์รายบุคคล (Personalized analytics)
+   รวมผลจากทุกแหล่งที่ระบบมีจริง คือคะแนนรายฝ่าย พัฒนาการรายรอบ ผลการวัดเชิงจิตมิติ
+   ผลสอบวัดสมรรถนะ และแฟ้มสะสมงาน แล้วสรุปเป็นข้อมูลชุดเดียวให้ทุกหน้าใช้ร่วมกัน
+   ทุกตัวเลขคำนวณจากข้อมูลที่บันทึกไว้จริง ไม่มีค่าที่กำหนดไว้ล่วงหน้า
+   ============================================================ */
+function personalize(sid){
+  const st=userById(sid); if(!st) return null;
+  const y=st.year, comps=activeComps(FW,y);
+  if(!comps.length) return null;
+  const rounds=HIST[sid]||[];
+  const A=analyze(FW,sid,{cdm:true});
+
+  /* รายสมรรถนะ พร้อมคะแนนรายฝ่าย ส่วนต่างจากเป้าหมาย และแนวโน้มข้ามรอบ */
+  const items=comps.map(c=>{
+    const p=compScoreParts(FW,sid,c,y);
+    const t=cfgOf(FW,y,c.id).target;
+    const series=rounds.map(r=>compScoreParts(FW,sid,c,y,r).v);
+    const seen=series.filter(v=>v!==null);
+    return {c,parts:p,v:p.v,t,gap:p.v===null?null:p.v-t,series,
+      trend:seen.length>1?seen[seen.length-1]-seen[0]:null};
+  });
+  const withV=items.filter(x=>x.v!==null);
+  const overall=withV.length?mean(withV.map(x=>x.v)):null;
+  const onTarget=withV.filter(x=>x.v>=x.t).length;
+  const strengths=[...withV].sort((a,b)=>b.gap-a.gap).slice(0,3);
+  const gaps=[...withV].filter(x=>x.gap<0).sort((a,b)=>a.gap-b.gap).slice(0,4);
+  const declining=withV.filter(x=>x.trend!==null&&x.trend<-0.15)
+    .sort((a,b)=>a.trend-b.trend).slice(0,3);
+
+  /* พัฒนาการรวมรายรอบ */
+  const series=rounds.map(r=>{
+    const v=comps.map(c=>compScoreParts(FW,sid,c,y,r).v).filter(x=>x!==null);
+    return v.length?mean(v):null;
+  });
+  const seenS=series.filter(v=>v!==null);
+  const growth=seenS.length>1?seenS[seenS.length-1]-seenS[0]:null;
+  const perRound=seenS.length>1?growth/(seenS.length-1):null;
+  const targetAvg=mean(comps.map(c=>cfgOf(FW,y,c.id).target));
+
+  /* การรู้จักตนเอง เทียบคะแนนที่ประเมินตนเองกับค่าเฉลี่ยของผู้ประเมินภายนอก */
+  const selfV=withV.map(x=>x.parts.byGroup.self).filter(v=>v!==null);
+  const extV=withV.map(x=>{
+    const g=[x.parts.byGroup.advisor,x.parts.byGroup.mentor].filter(v=>v!==null);
+    return g.length?mean(g):null;
+  }).filter(v=>v!==null);
+  const selfGap=(selfV.length&&extV.length)?mean(selfV)-mean(extV):null;
+
+  /* ผลสอบวัดสมรรถนะและแฟ้มสะสมงาน */
+  const openTests=comps.filter(c=>(cfgOf(FW,y,c.id).test||{open:true}).open!==false);
+  const examOf=cid=>EXAM_RESULTS.filter(r=>r.sid===sid&&r.comp===cid).slice(-1)[0]||null;
+  const examDone=openTests.filter(c=>examOf(c.id)).length;
+  const examTheta=openTests.map(c=>examOf(c.id)).filter(Boolean).map(r=>Number(r.theta));
+  const myEv=EVIDENCE.filter(e=>!e.student||e.student===sid);
+  const evPending=myEv.filter(e=>String(e.status||"pending")==="pending").length;
+  const evVerified=myEv.filter(e=>e.status==="verified").length;
+
+  /* จุดที่ยังไม่รอบรู้ตามแบบจำลอง G-DINA เรียงจากความน่าจะเป็นต่ำสุด */
+  const notMastered=(A&&A.gdina)?comps.map((c,k)=>({c,p:A.gdina.marginal[k]}))
+    .filter(o=>o.p<0.7).sort((a,b)=>a.p-b.p).slice(0,3):[];
+
+  /* มิติที่อ่อนที่สุดตามแบบจำลอง MIRT ใช้ยืนยันผลจากคะแนนดิบอีกทาง */
+  const weakDims=(A&&A.mirt)?A.mirt.filter(m=>m.est&&m.raw!==null)
+    .sort((a,b)=>a.est.theta-b.est.theta).slice(0,3):[];
+
+  /* สัญญาณเตือน เรียงตามความเร่งด่วน */
+  const alerts=[];
+  const risk=A?A.edm.risk:0;
+  if(risk>=0.6) alerts.push({lv:"risk",t:"ความเสี่ยงไม่ผ่านเกณฑ์สูง",
+    d:`แบบจำลองประเมินความเสี่ยงที่ ${Math.round(risk*100)}% ควรนัดหมายอาจารย์นิเทศก์ทบทวนแผนโดยเร็ว`});
+  else if(risk>=0.35) alerts.push({lv:"warn",t:"ต้องเฝ้าระวัง",
+    d:`ความเสี่ยงที่ ${Math.round(risk*100)}% ยังแก้ไขได้ทันหากเริ่มปรับตั้งแต่ตอนนี้`});
+  if(gaps.length) alerts.push({lv:gaps.length>=comps.length/3?"risk":"warn",
+    t:`ยังไม่ถึงเป้าหมาย ${gaps.length} สมรรถนะ`,
+    d:`ห่างมากที่สุดคือ ${esc(gaps[0].c.th)} (ขาดอีก ${Math.abs(gaps[0].gap).toFixed(2)} ระดับ)`});
+  if(declining.length) alerts.push({lv:"warn",t:`คะแนนลดลง ${declining.length} สมรรถนะ`,
+    d:`ลดมากที่สุดคือ ${esc(declining[0].c.th)} (${declining[0].trend.toFixed(2)} ระดับจากรอบแรก)`});
+  if(selfGap!==null&&selfGap>=0.5) alerts.push({lv:"warn",t:"ประเมินตนเองสูงกว่าผู้ประเมินภายนอก",
+    d:`สูงกว่าเฉลี่ย ${selfGap.toFixed(2)} ระดับ ควรทบทวนเกณฑ์ร่วมกับอาจารย์นิเทศก์เพื่อปรับมุมมอง`});
+  if(selfGap!==null&&selfGap<=-0.5) alerts.push({lv:"warn",t:"ประเมินตนเองต่ำกว่าผู้ประเมินภายนอก",
+    d:`ต่ำกว่าเฉลี่ย ${Math.abs(selfGap).toFixed(2)} ระดับ ผู้ประเมินเห็นความสามารถของท่านสูงกว่าที่ท่านประเมิน`});
+  if(openTests.length&&examDone<openTests.length) alerts.push({lv:"info",
+    t:`แบบทดสอบค้าง ${openTests.length-examDone} ชุด`,d:`ทำแล้ว ${examDone} จาก ${openTests.length} ชุด`});
+  if(evPending) alerts.push({lv:"info",t:`หลักฐานรอตรวจสอบ ${evPending} รายการ`,
+    d:"ความครบถ้วนของแฟ้มสะสมงานเป็นตัวแปรหนึ่งในแบบจำลองทำนายความเสี่ยง"});
+  if(!alerts.length) alerts.push({lv:"ok",t:"ไม่พบสัญญาณที่ต้องเฝ้าระวัง",
+    d:"ทุกสมรรถนะถึงระดับเป้าหมายและแนวโน้มเป็นบวก"});
+
+  return {st,y,comps,rounds,A,items,withV,overall,onTarget,targetAvg,
+    strengths,gaps,declining,series,growth,perRound,selfGap,
+    openTests,examDone,examTheta,myEv,evPending,evVerified,
+    notMastered,weakDims,alerts,risk,
+    level:overall===null?null:clamp(Math.round(overall),1,FW.levels.length)};
+}
+
+/** เกณฑ์ระดับถัดไปของสมรรถนะหนึ่ง ใช้เป็นเป้าหมายที่จับต้องได้ในข้อเสนอแนะ */
+function nextLevelDescriptor(y,cid,level){
+  const inds=indsOf(FW,y,cid); if(!inds.length) return "";
+  const k=clamp(level,1,FW.levels.length)-1;
+  return inds[0].descriptors[k]||"";
+}
+
+/** เส้นทางการเรียนรู้รายบุคคล สร้างจากช่องว่างสมรรถนะจริงของผู้เรียน
+    แต่ละระยะผูกกับสมรรถนะที่ระบุชื่อได้ และมีเกณฑ์ระดับถัดไปเป็นหลักฐานความสำเร็จ */
+function personalPath(P){
+  if(!P) return [];
+  const g=P.gaps, y=P.y;
+  const nx=o=>Math.min(Math.ceil(o.t),FW.levels.length);
+  const phases=[
+    {n:"ระยะที่ 1 · สัปดาห์ที่ 1–2",head:"ตั้งฐานและปรับความเข้าใจเกณฑ์",
+     items:[
+       P.selfGap!==null&&Math.abs(P.selfGap)>=0.4
+         ? `ทบทวนเกณฑ์การประเมินร่วมกับอาจารย์นิเทศก์ เพราะการประเมินตนเอง${P.selfGap>0?"สูง":"ต่ำ"}กว่าผู้ประเมินภายนอก ${Math.abs(P.selfGap).toFixed(2)} ระดับ`
+         : "ยืนยันความเข้าใจเกณฑ์กับอาจารย์นิเทศก์ให้ตรงกันก่อนเริ่มแผน",
+       P.evPending?`ติดตามหลักฐาน ${P.evPending} รายการที่รอตรวจสอบให้ได้ข้อสรุป`
+                  :"ตรวจความครบถ้วนของหลักฐานในแฟ้มสะสมงานเทียบกับเกณฑ์ของชั้นปี",
+       "บันทึกสะท้อนคิดสัปดาห์ละครั้ง ระบุสิ่งที่ทำได้และสิ่งที่ยังติดขัด"]},
+  ];
+  if(g.length) phases.push({n:"ระยะที่ 2 · สัปดาห์ที่ 3–6",
+    head:"ยกระดับสมรรถนะที่ห่างเป้าหมายมากที่สุด",
+    items:g.slice(0,2).map(o=>{
+      const d=nextLevelDescriptor(y,o.c.id,nx(o));
+      return `<b>${esc(o.c.th)}</b> ปัจจุบัน ${fmt(o.v)} เป้าหมาย ${o.t}
+        ${d?`<br><span class="sub">เกณฑ์ระดับ ${nx(o)}: ${esc(d)}</span>`:""}`;
+    }).concat(["ขอรับการนิเทศเฉพาะจุดจากครูพี่เลี้ยงอย่างน้อย 2 ครั้งในสองสมรรถนะนี้"])});
+  if(g.length>2) phases.push({n:"ระยะที่ 3 · สัปดาห์ที่ 7–10",
+    head:"ขยายผลไปยังสมรรถนะที่เหลือ",
+    items:g.slice(2).map(o=>`<b>${esc(o.c.th)}</b> ฝึกปฏิบัติในชั้นเรียนจริงและเก็บหลักฐานประกอบ (ขาดอีก ${Math.abs(o.gap).toFixed(2)} ระดับ)`)
+      .concat(["เข้าร่วม PLC ของกลุ่มสาระเพื่อแลกเปลี่ยนแนวปฏิบัติ"])});
+  else phases.push({n:"ระยะที่ 3 · สัปดาห์ที่ 7–10",head:"ต่อยอดจากจุดแข็ง",
+    items:P.strengths.slice(0,2).map(o=>`<b>${esc(o.c.th)}</b> (${fmt(o.v)}) พัฒนาเป็นผลงานเด่นเพื่อเป็นแบบอย่างแก่เพื่อนร่วมรุ่น`)
+      .concat(["รับบทบาทพี่เลี้ยงให้เพื่อนในสมรรถนะที่ท่านทำได้ดี"])});
+  phases.push({n:"ระยะที่ 4 · สัปดาห์ที่ 11–14",head:"ประเมินซ้ำและสรุปผล",
+    items:[
+      P.openTests.length>P.examDone?`ทำแบบทดสอบวัดสมรรถนะที่ยังค้างอีก ${P.openTests.length-P.examDone} ชุด`
+        :"ทบทวนผลการสอบวัดสมรรถนะเทียบกับผลการประเมินจากผู้ประเมิน",
+      "ประเมินตนเองอีกครั้งแล้วเทียบกับผลรอบก่อนหน้า",
+      P.risk>=0.5?"นัดหมายทบทวนแผนกับอาจารย์นิเทศก์ก่อนสิ้นภาคเรียน"
+                 :"จัดทำรายงานสะท้อนคิดปลายภาคพร้อมหลักฐานที่พัฒนาแล้ว"]});
+  return phases;
+}
+
 function studentDash(){
   const me=userById(S.user.linkTo||S.user.id)||students()[0];
   const y=me.year, comps=activeComps(FW,y);
@@ -2382,11 +2779,184 @@ function studentDash(){
     <div class="grid g2">
       ${card("สมรรถนะรายด้าน","ตัวเลขคือลำดับสมรรถนะตามกรอบ PTRU",radarSVG(radar,5))}
       <div class="stack">
-        ${card("พัฒนาการรายรอบ","คะแนนเฉลี่ยจากอาจารย์นิเทศก์และครูพี่เลี้ยงรวมกัน",progressBody,"",false)}
+        ${card("พัฒนาการรายรอบ",SCORE_RULE,progressBody,"",false)}
         ${card("สิ่งที่ต้องทำ","สร้างจากผลการประเมินและสถานะจริงของบัญชีท่าน",
           todoRows?`<table><tbody>${todoRows}</tbody></table>`
                  :`<div class="empty">ไม่มีรายการค้าง ทุกสมรรถนะถึงระดับเป้าหมายแล้ว</div>`,"",false)}
-      </div></div></div>`;
+      </div></div>
+    ${personalBoard(me)}
+    <div class="notebox">${docStamp("ผลวิเคราะห์ทั้งหมดคำนวณจากผลการประเมินและผลสอบที่บันทึกไว้จริงของท่าน")}</div>
+  </div>`;
+}
+
+/* ---------- แผงวิเคราะห์รายบุคคลบนแดชบอร์ดนักศึกษา ---------- */
+function personalBoard(me){
+  const P=personalize(me.id);
+  if(!P) return card("ผลวิเคราะห์รายบุคคล","",
+    `<div class="empty">ยังไม่มีผลการประเมินเพียงพอสำหรับวิเคราะห์ ระบบจะแสดงเมื่อมีการบันทึกผลอย่างน้อยหนึ่งรอบ</div>`);
+
+  const lv=P.level?FW.levels[P.level-1]:null;
+  const riskLb=P.risk>=.6?"เสี่ยงสูง":P.risk>=.35?"ต้องเฝ้าระวัง":"ความเสี่ยงต่ำ";
+  const riskCls=P.risk>=.6?"tag-risk":P.risk>=.35?"tag-warn":"tag-ok";
+
+  /* 👤 Personalized Profile */
+  const profile=card("👤 Personalized Profile","ข้อมูลประจำตัวและบริบทที่ใช้ประกอบการวิเคราะห์ทั้งหมด",
+    `<table class="tight"><tbody>
+      <tr><td style="color:var(--muted);width:150px">ผู้เรียน</td><td>${esc(me.name)} · รหัส ${esc(me.code||"—")}</td></tr>
+      <tr><td style="color:var(--muted)">สาขาวิชา / ชั้นปี</td><td>${esc(me.program||"—")} ${esc(progName(me.program))} · ${esc(yearOf(FW,P.y).label)}</td></tr>
+      <tr><td style="color:var(--muted)">ระยะการฝึก</td><td>${esc(yearOf(FW,P.y).stage||"—")}${me.school?" · "+esc(me.school):""}</td></tr>
+      <tr><td style="color:var(--muted)">สมรรถนะที่ประเมิน</td><td>${P.withV.length} จาก ${P.comps.length} ด้าน · ตัวชี้วัดที่มีผล ${P.A?P.A.nItems:0} รายการ</td></tr>
+      <tr><td style="color:var(--muted)">รอบการประเมิน</td><td>${P.rounds.length} รอบ${P.rounds.length?" · ล่าสุด "+esc(P.rounds[P.rounds.length-1].when||P.rounds[P.rounds.length-1].label):""}</td></tr>
+      <tr><td style="color:var(--muted)">สถานะความเสี่ยง</td><td><span class="tag ${riskCls}">${riskLb} · ${Math.round(P.risk*100)}%</span></td></tr>
+    </tbody></table>`,"",false);
+
+  /* 🎯 Personalized Competency Score */
+  const scoreRows=[...P.withV].sort((a,b)=>a.gap-b.gap).map(x=>`<tr>
+    <td style="font-size:.82rem">${esc(x.c.th)}<div class="sub">${x.c.code}</div></td>
+    ${RATERS.map(r=>`<td class="num" style="font-size:.8rem;${x.parts.byRater[r.key]===null?"color:var(--muted)":""}">${fmt(x.parts.byRater[r.key])}</td>`).join("")}
+    <td class="num" style="font-weight:600">${fmt(x.v)}</td><td class="num">${x.t}</td>
+    <td class="num" style="font-weight:600;color:${x.gap>=0?"var(--ok)":"var(--risk)"}">${(x.gap>=0?"+":"")+x.gap.toFixed(2)}</td>
+  </tr>`).join("");
+  const score=card("🎯 Personalized Competency Score",
+    `${SCORE_RULE} · เรียงจากด้านที่ห่างเป้าหมายมากที่สุด`,
+    `<div class="grid g4" style="margin-bottom:.8rem">
+      ${stat("คะแนนรวม",fmt(P.overall),lv?lv.th+" · "+lv.en:"—")}
+      ${stat("ถึงเป้าหมาย",`${P.onTarget} / ${P.withV.length}`,`เป้าหมายเฉลี่ย ${fmt(P.targetAvg,1)}`)}
+      ${stat("จุดแข็งสูงสุด",P.strengths.length?fmt(P.strengths[0].v):"—",P.strengths.length?esc(P.strengths[0].c.th):"—")}
+      ${stat("ต้องพัฒนามากสุด",P.gaps.length?fmt(P.gaps[0].v):"—",P.gaps.length?esc(P.gaps[0].c.th):"ถึงเป้าหมายทุกด้าน")}
+     </div>
+     <div class="scroll-x"><table class="tight" style="min-width:720px"><thead><tr>
+       <th>สมรรถนะ</th>${RATERS.map(r=>`<th class="num" title="${esc(r.label)}">${esc(r.short)}</th>`).join("")}
+       <th class="num">รวม</th><th class="num">เป้า</th><th class="num">ส่วนต่าง</th>
+     </tr></thead><tbody>${scoreRows}</tbody></table></div>`,"",false);
+
+  /* 📈 Personalized Progress */
+  const progRows=P.series.map((v,i)=>`<tr><td>${esc(P.rounds[i].label)}
+      <div class="sub">${esc(P.rounds[i].when||"")}</div></td>
+    <td class="num">${fmt(v)}</td><td>${levelChip(v)}</td></tr>`).join("");
+  const gRate=P.perRound===null?null:P.perRound;
+  const progress=card("📈 Personalized Progress",
+    "อัตราการเปลี่ยนแปลงคำนวณจากคะแนนรวมของทุกรอบที่บันทึกไว้จริง",
+    `<div class="grid g3" style="margin-bottom:.8rem">
+      ${stat("การเปลี่ยนแปลงรวม",P.growth===null?"—":(P.growth>=0?"+":"")+P.growth.toFixed(2),
+        P.growth===null?"ต้องมีอย่างน้อย 2 รอบ":`จาก ${P.rounds.length} รอบการประเมิน`)}
+      ${stat("อัตราต่อรอบ",gRate===null?"—":(gRate>=0?"+":"")+gRate.toFixed(2),
+        gRate===null?"—":(gRate>0.1?"ก้าวหน้าชัดเจน":gRate<-0.1?"ถดถอย ควรทบทวนแผน":"ค่อนข้างคงที่"))}
+      ${stat("สมรรถนะที่ลดลง",P.declining.length,P.declining.length?esc(P.declining[0].c.th):"ไม่มี")}
+     </div>
+     ${P.series.length?`<table class="tight"><thead><tr><th>รอบ</th><th class="num">คะแนนรวม</th><th>ระดับ</th></tr></thead><tbody>${progRows}</tbody></table>
+       ${P.series.length>1?`<div style="margin-top:.8rem">${lineSVG(P.rounds.map(r=>r.label),P.series.map(v=>v||0),FW.levels.length,+P.targetAvg.toFixed(1))}</div>`:""}`
+      :`<div class="empty">ยังไม่มีรอบการประเมิน</div>`}`,"",false);
+
+  /* 🧠 Personalized Recommendation */
+  const recs=[];
+  P.gaps.slice(0,3).forEach(o=>{
+    const nx=Math.min(Math.ceil(o.t),FW.levels.length);
+    const d=nextLevelDescriptor(P.y,o.c.id,nx);
+    recs.push({h:esc(o.c.th),b:`ปัจจุบัน ${fmt(o.v)} เป้าหมาย ${o.t} ขาดอีก ${Math.abs(o.gap).toFixed(2)} ระดับ`+
+      (d?`<br><span class="sub">เกณฑ์ระดับ ${nx}: ${esc(d)}</span>`:"")});
+  });
+  P.notMastered.slice(0,2).forEach(o=>recs.push({h:esc(o.c.th)+" (จากแบบจำลองวินิจฉัย)",
+    b:`ความน่าจะเป็นที่รอบรู้คุณลักษณะนี้เพียง ${Math.round(o.p*100)}% ควรฝึกซ้ำในสถานการณ์จริงและเก็บหลักฐานยืนยัน`}));
+  if(!recs.length&&P.strengths.length) recs.push({h:esc(P.strengths[0].c.th),
+    b:`เป็นจุดแข็งที่ ${fmt(P.strengths[0].v)} สูงกว่าเป้าหมาย ${P.strengths[0].gap.toFixed(2)} ระดับ ควรต่อยอดเป็นผลงานเด่นในแฟ้มสะสมงาน`});
+  const recommend=card("🧠 Personalized Recommendation",
+    "ข้อเสนอเรียงตามช่องว่างระหว่างคะแนนจริงกับระดับเป้าหมาย และผลจากแบบจำลองวินิจฉัย G-DINA",
+    recs.map(r=>`<div style="border-left:3px solid var(--accent);padding-left:.8rem;margin-bottom:.75rem">
+      <div style="font-weight:500;font-size:.9rem">${r.h}</div>
+      <p style="font-size:.83rem;color:var(--text-soft);margin-top:.15rem">${r.b}</p></div>`).join(""));
+
+  /* 🤖 AI Personalized Feedback */
+  const feedback=card("🤖 AI Personalized Feedback",
+    "สังเคราะห์จากผลการวัดเชิงจิตมิติ พัฒนาการรายรอบ และความสอดคล้องระหว่างผู้ประเมิน",
+    aiFeedback(P)+`<p class="hint" style="margin-top:.8rem">
+      ข้อความนี้สร้างจากกฎที่อ้างอิงค่าสถิติที่คำนวณได้จริง เป็นข้อมูลประกอบการพิจารณา
+      ไม่ใช่คำตัดสิน ผู้ประเมินและอาจารย์นิเทศก์เป็นผู้ตัดสินผลขั้นสุดท้าย</p>`);
+
+  /* 📚 Personalized Learning Path */
+  const phases=personalPath(P);
+  const path=card("📚 Personalized Learning Path",
+    "แผน 14 สัปดาห์ ผูกกับสมรรถนะที่ระบุชื่อได้ และมีเกณฑ์ระดับถัดไปเป็นหลักฐานความสำเร็จ",
+    phases.map((ph,i)=>`<div style="display:flex;gap:.75rem;padding:.6rem 0;${i<phases.length-1?"border-bottom:1px solid var(--line-soft)":""}">
+      <div style="flex:none;width:2rem;height:2rem;border-radius:50%;background:var(--accent-soft);color:var(--accent-fg);
+        display:flex;align-items:center;justify-content:center;font-weight:600;font-size:.85rem">${i+1}</div>
+      <div style="flex:1"><div style="font-weight:600;font-size:.88rem">${esc(ph.head)}</div>
+        <div class="sub">${esc(ph.n)}</div>
+        <ul style="margin:.4rem 0 0;padding-left:1.05rem;font-size:.84rem;line-height:1.75">
+          ${ph.items.map(x=>`<li>${x}</li>`).join("")}</ul></div></div>`).join(""));
+
+  /* ⚠️ Personalized Alert */
+  const alertCls={risk:["var(--risk-bg)","var(--risk-line)","var(--risk)"],
+    warn:["var(--warn-bg)","var(--warn-line)","var(--warn)"],
+    info:["var(--surface-2)","var(--line)","var(--text-soft)"],
+    ok:["var(--ok-bg)","var(--ok-line)","var(--ok)"]};
+  const alerts=card("⚠️ Personalized Alert","เรียงตามความเร่งด่วน สร้างจากเงื่อนไขที่ตรวจพบในข้อมูลจริง",
+    P.alerts.map(a=>{const c=alertCls[a.lv]||alertCls.info;
+      return `<div style="background:${c[0]};border:1px solid ${c[1]};border-left:4px solid ${c[2]};
+        border-radius:8px;padding:.6rem .8rem;margin-bottom:.55rem">
+        <div style="font-weight:600;font-size:.87rem;color:${c[2]}">${esc(a.t)}</div>
+        <div style="font-size:.83rem;color:var(--text-soft);margin-top:.1rem">${a.d}</div></div>`;}).join(""));
+
+  return `${profile}${score}${progress}
+    <div class="grid g2" style="align-items:start">${recommend}${feedback}</div>
+    <div class="grid g2" style="align-items:start">${path}${alerts}</div>`;
+}
+
+/** ข้อความวิเคราะห์เชิงลึก สร้างจากกฎที่อ้างอิงค่าสถิติที่คำนวณได้จริง
+    เขียนแบบวิชาการ ระบุตัวเลขและวิธีตีความกำกับทุกข้อสรุป */
+function aiFeedback(P){
+  const out=[];
+  const lv=P.level?FW.levels[P.level-1]:null;
+
+  out.push(`<p><b>ภาพรวมการวัด</b> คะแนนรวมอยู่ที่ ${fmt(P.overall)} จัดอยู่ในระดับ${lv?" "+esc(lv.th):"—"}
+    เทียบกับระดับเป้าหมายเฉลี่ยของ${esc(yearOf(FW,P.y).label)} ที่ ${fmt(P.targetAvg,1)}
+    ${P.overall!==null&&P.overall>=P.targetAvg?"ถือว่าถึงเกณฑ์ในภาพรวม":"จึงยังต่ำกว่าเกณฑ์ในภาพรวม"}
+    โดยถึงเป้าหมายรายด้าน ${P.onTarget} จาก ${P.withV.length} สมรรถนะ</p>`);
+
+  if(P.A&&P.A.irt){
+    const t=P.A.irt.theta, se=P.A.irt.se;
+    out.push(`<p><b>การวัดเชิงจิตมิติ</b> ค่าความสามารถแฝงประมาณด้วยโมเดล GRM แบบ EAP ได้ θ = ${fmt(t)}
+      (SE = ${fmt(se)}) ช่วงเชื่อมั่น 95% อยู่ระหว่าง ${fmt(t-1.96*se)} ถึง ${fmt(t+1.96*se)}
+      ${se>0.45?"ค่าความคลาดเคลื่อนยังกว้าง ควรเพิ่มจำนวนตัวชี้วัดที่ประเมินเพื่อให้ประมาณค่าได้แม่นขึ้น"
+        :"ความคลาดเคลื่อนอยู่ในเกณฑ์ที่ใช้ตัดสินรายบุคคลได้"}
+      ค่า θ เปรียบเทียบได้เฉพาะภายในชั้นปีเดียวกัน เพราะชุดตัวชี้วัดต่างกันตามชั้นปี</p>`);
+  }
+
+  if(P.weakDims.length){
+    const w=P.weakDims[0];
+    out.push(`<p><b>มิติที่อ่อนที่สุด</b> จากการวิเคราะห์รายมิติ (MIRT) พบว่า ${esc(w.comp.th)}
+      มีค่า θ ต่ำที่สุดที่ ${fmt(w.est.theta)} ขณะที่คะแนนดิบอยู่ที่ ${fmt(w.raw)} เทียบกับเป้าหมาย ${w.target}
+      ผลจากสองวิธีชี้ไปทางเดียวกัน จึงเป็นจุดที่ควรพัฒนาเป็นลำดับแรก</p>`);
+  }
+
+  if(P.growth!==null){
+    const dir=P.growth>0.15?"มีพัฒนาการเชิงบวก":P.growth<-0.15?"มีแนวโน้มถดถอย":"ค่อนข้างคงที่";
+    out.push(`<p><b>พัฒนาการตามเวลา</b> เทียบรอบแรกกับรอบล่าสุด คะแนนเปลี่ยนแปลง
+      ${(P.growth>=0?"+":"")+P.growth.toFixed(2)} ระดับ เฉลี่ย ${(P.perRound>=0?"+":"")+P.perRound.toFixed(2)} ระดับต่อรอบ
+      ถือว่า${dir} ${P.declining.length?`อย่างไรก็ตามมี ${P.declining.length} สมรรถนะที่คะแนนลดลง นำโดย ${esc(P.declining[0].c.th)} ซึ่งควรตรวจสอบว่าเกิดจากบริบทการฝึกที่เปลี่ยนไปหรือจากการใช้เกณฑ์ต่างกันระหว่างรอบ`:""}</p>`);
+  }
+
+  if(P.selfGap!==null){
+    const w=Math.abs(P.selfGap);
+    out.push(`<p><b>ความสอดคล้องของการประเมินตนเอง</b> คะแนนที่ท่านประเมินตนเอง${P.selfGap>=0?"สูงกว่า":"ต่ำกว่า"}
+      ค่าเฉลี่ยของผู้ประเมินภายนอก ${w.toFixed(2)} ระดับ
+      ${w<0.25?"ถือว่าสอดคล้องกันดี สะท้อนการรู้จักตนเองที่ตรงกับการสังเกตของผู้ประเมิน"
+        :w<0.5?"ต่างกันเล็กน้อย อยู่ในช่วงที่ยอมรับได้"
+        :P.selfGap>0?"ต่างกันมากพอที่ควรทบทวนเกณฑ์ร่วมกับอาจารย์นิเทศก์ เพราะการประเมินตนเองสูงเกินจริงมักทำให้มองข้ามจุดที่ต้องพัฒนา"
+        :"ต่างกันมากพอที่ควรทบทวนร่วมกัน เพราะการประเมินตนเองต่ำเกินจริงอาจบั่นทอนความมั่นใจโดยไม่จำเป็น"}</p>`);
+  }
+
+  if(P.A&&P.A.gdina&&P.notMastered.length){
+    out.push(`<p><b>การวินิจฉัยคุณลักษณะ</b> แบบจำลอง G-DINA ชี้ว่ายังไม่รอบรู้ ${P.notMastered.length} คุณลักษณะ
+      ต่ำสุดคือ ${esc(P.notMastered[0].c.th)} ที่ความน่าจะเป็น ${Math.round(P.notMastered[0].p*100)}%
+      ค่าต่ำกว่า 70% หมายถึงยังไม่มีหลักฐานเพียงพอว่ารอบรู้ ควรเก็บหลักฐานการปฏิบัติเพิ่มในด้านนี้</p>`);
+  }
+
+  out.push(`<p><b>ข้อควรระวังในการตีความ</b> ผลทั้งหมดคำนวณจากคะแนนที่ผู้ประเมินบันทึกไว้
+    ซึ่งได้รับอิทธิพลจากความเข้มงวดของผู้ประเมินแต่ละคน ระบบจึงเทียบผลจากหลายฝ่ายประกอบกัน
+    ค่าความเสี่ยงจากแบบจำลองทำนายยังไม่ได้สอบเทียบกับข้อมูลย้อนหลังจริงของคณะ ใช้ประกอบดุลยพินิจเท่านั้น</p>`);
+
+  return `<div style="font-size:.86rem;line-height:1.85">${out.join("")}</div>`;
 }
 function lecturerDash(){
   const y=S.year;
@@ -2505,36 +3075,90 @@ function analyticsPage(){
         <thead><tr><th>นักศึกษา</th>${comps.map((c,k)=>`<th class="num" title="${esc(c.th)}">${k+1}</th>`).join("")}</tr></thead><tbody>${heat}</tbody></table></div>`
         :`<div class="empty">ไม่มีนักศึกษาในชั้นปีนี้</div>`,"",false)}</div>`;
 }
+/** แถบเปรียบเทียบคะแนนรายฝ่ายกับค่าเฉลี่ยและเป้าหมายในช่องเดียว
+    เส้นประคือระดับเป้าหมายของชั้นปี จุดคือคะแนนของแต่ละฝ่าย แถบทึบคือค่าเฉลี่ยที่ใช้รายงาน */
+function raterBar(parts,target,max){
+  const M=max||5;
+  const pct=v=>clamp((v||0)/M,0,1)*100;
+  const dots=RATERS.map(r=>{
+    const v=parts.byRater[r.key];
+    if(v===null||v===undefined) return "";
+    return `<i title="${esc(r.label)} ${fmt(v)}" style="position:absolute;left:${pct(v)}%;top:50%;
+      transform:translate(-50%,-50%);width:.5rem;height:.5rem;border-radius:50%;
+      background:${r.color};box-shadow:0 0 0 1.5px var(--surface)"></i>`;
+  }).join("");
+  const tgt=target?`<span style="position:absolute;left:${pct(target)}%;top:-2px;bottom:-2px;width:0;
+    border-left:2px dashed var(--text-soft)" title="เป้าหมาย ${target}"></span>`:"";
+  const v=parts.v;
+  const col=v===null?"var(--line)":(v>=target?"var(--ok)":v>=target-.5?"var(--warn)":"var(--risk)");
+  return `<div style="position:relative;height:.85rem;background:var(--line-soft);border-radius:4px">
+    <i style="position:absolute;left:0;top:0;bottom:0;width:${pct(v)}%;background:${col};
+      border-radius:4px;opacity:.35"></i>${tgt}${dots}</div>`;
+}
+
 function ladderPage(){
   const me=userById(S.user.linkTo||S.user.id)||students()[0];
   const y=me.year;
   const comps=activeComps(FW,y);
+
+  /* คะแนนรวมรายฝ่ายทั้งชั้นปี ใช้เป็นตัวเลขสรุปด้านบน */
+  const overallBy={};
+  RATERS.forEach(r=>{
+    const v=comps.map(c=>compScoreBy(FW,me.id,c,y,r.key)).filter(x=>x!==null);
+    overallBy[r.key]=v.length?mean(v):null;
+  });
+  const groupOverall={};
+  SCORE_GROUPS.forEach(g=>{
+    const v=comps.map(c=>compScoreParts(FW,me.id,c,y).byGroup[g.key]).filter(x=>x!==null);
+    groupOverall[g.key]=v.length?mean(v):null;
+  });
+  const ov=overallAvg(FW,me.id,y);
+  const nGroups=SCORE_GROUPS.filter(g=>groupOverall[g.key]!==null).length;
+
   const rows=comps.map((c,n)=>{
-    const a=compScoreAvg(FW,me.id,c,y), v=a.v, t=cfgOf(FW,y,c.id).target;
+    const a=compScoreParts(FW,me.id,c,y), v=a.v, t=cfgOf(FW,y,c.id).target;
+    const cells=RATERS.map(r=>{
+      const x=a.byRater[r.key];
+      return `<td class="num" style="font-size:.82rem;${x===null?"color:var(--muted)":""}">${fmt(x)}</td>`;
+    }).join("");
+    const gap=v===null?null:v-t;
     return `<tr><td class="sub">${n+1}</td>
       <td style="font-size:.84rem">${esc(c.th)}<div class="sub">${c.code} · ${PTRU[c.ptru]?PTRU[c.ptru].th:""}</div></td>
-      <td class="num">${fmt(a.l)}</td><td class="num">${fmt(a.m)}</td>
+      ${cells}
       <td class="num" style="font-weight:600">${fmt(v)}${a.n===1?` <span class="tag tag-warn">ฝ่ายเดียว</span>`:""}</td>
-      <td>${levelChip(v)}</td><td class="num">${t}</td>
-      <td>${v===null?`<span class="tag tag-n">ไม่มีข้อมูล</span>`:
-        `<span class="tag ${v>=t?"tag-ok":v>=t-.5?"tag-warn":"tag-risk"}">${v>=t?"ถึงเป้าหมาย":v>=t-.5?"ใกล้เป้าหมาย":"ต้องพัฒนา"}</span>`}</td></tr>`;}).join("");
-  const ol=mean(comps.map(c=>compScoreBy(FW,me.id,c,y,"lec")).filter(x=>x!==null));
-  const om=mean(comps.map(c=>compScoreBy(FW,me.id,c,y,"men")).filter(x=>x!==null));
-  const ov=overallAvg(FW,me.id,y);
+      <td class="num">${t}</td>
+      <td style="min-width:130px">${raterBar(a,t,FW.levels.length)}</td>
+      <td class="num" style="font-weight:600;color:${gap===null?"var(--muted)":gap>=0?"var(--ok)":"var(--risk)"}">
+        ${gap===null?"—":(gap>=0?"+":"")+gap.toFixed(2)}</td></tr>`;}).join("");
+
+  const legend=RATERS.map(r=>`<span style="display:inline-flex;align-items:center;gap:.3rem;margin-right:.9rem">
+      <i style="width:.55rem;height:.55rem;border-radius:50%;background:${r.color};display:inline-block"></i>
+      <span style="font-size:.8rem">${esc(r.label)}</span></span>`).join("")+
+    `<span style="display:inline-flex;align-items:center;gap:.3rem"><i style="width:0;height:.7rem;border-left:2px dashed var(--text-soft);display:inline-block"></i>
+      <span style="font-size:.8rem">ระดับเป้าหมายของชั้นปี</span></span>`;
+
+  const groupStats=SCORE_GROUPS.map(g=>{
+    const sub=g.raters.map(k=>{
+      const r=raterByKey(k), x=overallBy[k];
+      return x===null?null:`${r.short} ${fmt(x)}`;
+    }).filter(Boolean).join(" · ");
+    return stat(g.label,fmt(groupOverall[g.key]),sub||"ยังไม่มีการประเมิน");
+  }).join("");
+
   return `<div class="stack">
-    <div class="notebox">คะแนนที่แสดงคำนวณจาก <b>(คะแนนอาจารย์นิเทศก์ + คะแนนครูพี่เลี้ยง) หารด้วย 2</b>
-      หากมีผู้ประเมินเพียงฝ่ายเดียว ระบบจะใช้คะแนนของฝ่ายนั้นและติดป้ายกำกับไว้
+    <div class="notebox">คะแนนที่แสดงคำนวณจาก <b>${SCORE_RULE}</b><br>${SCORE_RULE_NOTE}<br>
       ผลนี้เป็นของ${yearOf(FW,y).label} เกณฑ์เป้าหมายกำหนดแยกตามชั้นปี จึงเทียบคะแนนข้ามชั้นปีโดยตรงไม่ได้</div>
-    <div class="grid g3">
-      ${stat("คะแนนจากอาจารย์นิเทศก์",fmt(ol),"เฉลี่ยทุกสมรรถนะ")}
-      ${stat("คะแนนจากครูพี่เลี้ยง",fmt(om),"เฉลี่ยทุกสมรรถนะ")}
-      ${stat("คะแนนที่ใช้รายงาน",fmt(ov),"ผลรวมของสองฝ่ายหารด้วย 2")}
+    <div class="grid g4">
+      ${groupStats}
+      ${stat("คะแนนที่ใช้รายงาน",fmt(ov),nGroups?`เฉลี่ยจาก ${nGroups} ฝ่ายที่มีข้อมูล`:"ยังไม่มีการประเมิน")}
     </div>
     ${card("พัฒนาการรายสมรรถนะ","เปรียบเทียบคะแนนของผู้ประเมินแต่ละฝ่ายกับค่าเฉลี่ยและระดับเป้าหมายของชั้นปี",
-      `<div class="scroll-x"><table class="tight" style="min-width:760px"><thead><tr>
-        <th style="width:36px">#</th><th>สมรรถนะ</th>
-        <th class="num">อาจารย์</th><th class="num">ครูพี่เลี้ยง</th><th class="num">เฉลี่ย</th>
-        <th>ระดับปัจจุบัน</th><th class="num">เป้าหมาย</th><th>สถานะ</th>
+      `<div class="card-b" style="border-bottom:1px solid var(--line-soft);padding-top:0">${legend}</div>
+       <div class="scroll-x"><table class="tight" style="min-width:980px"><thead><tr>
+        <th style="width:34px">#</th><th>สมรรถนะ</th>
+        ${RATERS.map(r=>`<th class="num" title="${esc(r.label)}">${esc(r.short)}</th>`).join("")}
+        <th class="num">เฉลี่ย</th><th class="num">เป้าหมาย</th>
+        <th>เทียบกับเป้าหมาย</th><th class="num">ส่วนต่าง</th>
       </tr></thead><tbody>${rows}</tbody></table></div>`,"",false)}</div>`;
 }
 function assessPage(){
@@ -2548,11 +3172,13 @@ function assessPage(){
   const c=comps.find(x=>x.id===S.asComp), cfg=cfgOf(FW,y,c.id);
   const done=cfg.indicators.length>0&&cfg.indicators.every(i=>S.asScores[i.id]);
   const result=done?mean(cfg.indicators.map(i=>S.asScores[i.id])):null;
-  /* ประเภทการประเมินที่แต่ละบทบาทเลือกได้ ต้องสอดคล้องกับ api_assessSubmit ใน Code.gs */
+  /* ประเภทการประเมินที่แต่ละบทบาทเลือกได้ ต้องสอดคล้องกับ api_assessSubmit ใน Code.gs
+     อาจารย์นิเทศก์แต่ละประเภทบันทึกในช่องทางของตนเอง จึงแยกดูคะแนนรายฝ่ายได้ */
   const allowType=id=>S.role==="Student"?["self","peer"].includes(id)
     :S.role==="Mentor"?id==="mentor"
     :S.role==="Director"?id==="director"
-    :S.role==="Lecturer"?id==="lecturer":true;
+    :S.role==="Lecturer"?id==="lecturer"
+    :S.role==="MajorAdvisor"?id==="major":true;
   if(!allowType(S.asType)) S.asType=ASSESS_TYPES.map(([id])=>id).find(allowType)||"lecturer";
   const typeOpts=ASSESS_TYPES.filter(([id])=>allowType(id))
     .map(([id,l])=>`<option value="${id}" ${S.asType===id?"selected":""}>${l}</option>`).join("");
@@ -2583,10 +3209,63 @@ function assessPage(){
          <div style="margin-top:.4rem">${levelChip(result)}</div>
          <p style="font-size:.82rem;margin-top:.7rem;color:${result>=cfg.target?"var(--ok)":"var(--warn)"}">
            ${result>=cfg.target?`ถึงระดับเป้าหมายของชั้นปี (${cfg.target})`:`ยังต่ำกว่าระดับเป้าหมายของชั้นปี (${cfg.target})`}</p>`)}
-      <div class="aibox"><div class="lb">ข้อเสนอแนะจากระบบ AI</div>
-        <p>จากบันทึกสะท้อนคิดล่าสุด พบการอธิบายปัญหาที่ชัดเจนแต่ยังขาดการเชื่อมโยงกับทฤษฎีการเรียนรู้</p>
-        <p class="note">เป็นข้อเสนอแนะประกอบการพิจารณาเท่านั้น ผู้ประเมินเป็นผู้ตัดสินคะแนน</p></div>
+      ${assessAdvice(st,c,result)}
     </div></div>`;
+}
+
+/** ข้อเสนอแนะเชิงลึกสำหรับผู้ประเมิน ขณะกำลังประเมินสมรรถนะหนึ่งของนักศึกษาคนหนึ่ง
+    ใช้ผลวิเคราะห์จริงของผู้เรียน เทียบกับคะแนนที่ผู้ประเมินกำลังจะให้ในรอบนี้ */
+function assessAdvice(st,c,draft){
+  const P=personalize(st.id);
+  if(!P) return `<div class="aibox"><div class="lb">ข้อเสนอแนะจากระบบ</div>
+    <p>ยังไม่มีผลการประเมินย้อนหลังของผู้เรียนรายนี้ ระบบจะวิเคราะห์ให้เมื่อมีผลอย่างน้อยหนึ่งรอบ</p></div>`;
+
+  const it=P.items.find(x=>x.c.id===c.id);
+  const y=P.y, t=cfgOf(FW,y,c.id).target;
+  const parts=it?it.parts:null;
+  const bits=[];
+
+  /* บริบทของสมรรถนะนี้เทียบกับฝ่ายอื่นและกับรอบก่อน */
+  if(parts){
+    const others=RATERS.map(r=>({r,v:parts.byRater[r.key]})).filter(o=>o.v!==null);
+    if(others.length) bits.push(`<p><b>คะแนนที่บันทึกไว้แล้วในสมรรถนะนี้</b> ${
+      others.map(o=>`${esc(o.r.short)} ${fmt(o.v)}`).join(" · ")} (รวม ${fmt(it.v)} เทียบเป้าหมาย ${t})</p>`);
+    if(it.trend!==null) bits.push(`<p><b>แนวโน้ม</b> เปลี่ยนแปลง ${(it.trend>=0?"+":"")+it.trend.toFixed(2)} ระดับจากรอบแรก
+      ${it.trend<-0.15?"ซึ่งเป็นทิศทางลดลง ควรตรวจสอบว่าเกิดจากบริบทการฝึกหรือจากการใช้เกณฑ์ต่างกัน":""}</p>`);
+  }
+  /* เทียบคะแนนที่กำลังจะให้ กับค่าที่ฝ่ายอื่นเคยให้ */
+  if(draft!==null&&parts){
+    const ext=RATERS.filter(r=>r.type!==S.asType).map(r=>parts.byRater[r.key]).filter(v=>v!==null);
+    if(ext.length){
+      const d=draft-mean(ext);
+      bits.push(`<p><b>คะแนนที่ท่านกำลังให้</b> ${fmt(draft)} ${Math.abs(d)<0.5?"สอดคล้องกับ":(d>0?"สูงกว่า":"ต่ำกว่า")}
+        ค่าเฉลี่ยของผู้ประเมินฝ่ายอื่นในสมรรถนะนี้ (${fmt(mean(ext))}) อยู่ ${Math.abs(d).toFixed(2)} ระดับ
+        ${Math.abs(d)>=1?"ส่วนต่างเกินหนึ่งระดับ ควรทบทวนหลักฐานประกอบก่อนบันทึก":""}</p>`);
+    }
+    const nx=Math.min(Math.ceil(t),FW.levels.length);
+    const desc=nextLevelDescriptor(y,c.id,nx);
+    if(desc&&draft<t) bits.push(`<p><b>เกณฑ์ระดับเป้าหมาย (${nx})</b> ${esc(desc)}</p>`);
+  }
+  /* ตำแหน่งของสมรรถนะนี้ในภาพรวมของผู้เรียน */
+  const rank=[...P.withV].sort((a,b)=>a.gap-b.gap).findIndex(x=>x.c.id===c.id);
+  if(rank>=0) bits.push(`<p><b>ภาพรวมของผู้เรียน</b> สมรรถนะนี้อยู่ลำดับที่ ${rank+1} จาก ${P.withV.length}
+    เมื่อเรียงจากด้านที่ห่างเป้าหมายมากที่สุด · คะแนนรวมทุกด้าน ${fmt(P.overall)}
+    · ความเสี่ยงไม่ผ่านเกณฑ์ ${Math.round(P.risk*100)}%</p>`);
+
+  /* เส้นทางการเรียนรู้ที่ผู้ประเมินใช้แนะนำต่อได้ทันที */
+  const g=P.gaps.slice(0,3);
+  const path=g.length?`<div style="margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--line-soft)">
+    <div class="lb">เส้นทางการเรียนรู้ที่แนะนำ (Personalized Path)</div>
+    <ol style="margin:.35rem 0 0;padding-left:1.15rem;font-size:.83rem;line-height:1.75">
+      ${g.map(o=>{const nx=Math.min(Math.ceil(o.t),FW.levels.length);
+        const d=nextLevelDescriptor(y,o.c.id,nx);
+        return `<li><b>${esc(o.c.th)}</b> ${fmt(o.v)} → ${o.t}${d?`<br><span class="sub">${esc(d)}</span>`:""}</li>`;}).join("")}
+    </ol></div>`:"";
+
+  return `<div class="aibox"><div class="lb">ข้อเสนอแนะจากระบบ AI · วิเคราะห์เชิงลึก</div>
+    <div style="font-size:.84rem;line-height:1.8">${bits.join("")}</div>${path}
+    <p class="note">สังเคราะห์จากผลการประเมินและผลวิเคราะห์เชิงจิตมิติที่บันทึกไว้จริง
+      เป็นข้อมูลประกอบการพิจารณาเท่านั้น ผู้ประเมินเป็นผู้ตัดสินคะแนน</p></div>`;
 }
 /** นักศึกษาเจ้าของแฟ้มสะสมงานที่กำลังเปิดอยู่
     นักศึกษาดูของตนเองเสมอ ส่วนผู้ตรวจสอบเลือกจากรายชื่อในขอบเขตของตน */
@@ -2697,20 +3376,8 @@ function approvalsPage(){
     ${card("คำขอสมัครใช้งาน","ตรวจข้อมูลก่อนอนุมัติ เมื่ออนุมัติแล้วระบบจะสร้างบัญชีและผูกกับสาขาวิชาที่ผู้สมัครระบุทันที",
     `<div class="scroll-x"><table style="min-width:840px"><thead><tr><th>ผู้สมัคร</th><th>โรงเรียน</th><th>สาขาที่รับนิเทศ</th><th>บทบาท</th><th>กลุ่มสาระ / ระดับชั้น</th><th class="num">ประสบการณ์</th><th>วันที่ยื่น</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`,"",false)}</div>`;
 }
-function invitationsPage(){
-  const rows=INVITES.map(iv=>`<tr><td style="font-weight:500">${iv.code}</td>
-    <td><span class="tag tag-n">${ROLE_TH[iv.role]||iv.role}</span></td><td style="font-size:.84rem">${esc(iv.school)}</td>
-    <td class="num">${iv.used}/${iv.quota}</td><td style="font-size:.84rem">${iv.expires}</td></tr>`).join("");
-  return `<div class="grid g2" style="grid-template-columns:1.6fr 1fr;align-items:start">
-    ${card("รหัสเชิญที่ออกแล้ว","รหัสผูกกับโรงเรียนและภาคการศึกษา สิทธิ์หมดอายุอัตโนมัติเมื่อสิ้นภาคการศึกษา",
-      `<table><thead><tr><th>รหัส</th><th>บทบาท</th><th>โรงเรียน</th><th class="num">ใช้แล้ว</th><th>หมดอายุ</th></tr></thead><tbody>${rows}</tbody></table>`,"",false)}
-    ${card("ออกรหัสเชิญใหม่","",
-      `<div class="field" style="margin-top:0"><label>บทบาท</label><select class="inp" id="iv_role">
-        <option value="Mentor">ครูพี่เลี้ยง</option><option value="Director">ผู้บริหารสถานศึกษา</option></select></div>
-       <div class="field"><label>โรงเรียน</label><input class="inp" id="iv_school" data-nore></div>
-       <div class="field"><label>จำนวนที่ใช้ได้</label><input class="inp" id="iv_quota" type="number" min="1" max="50" value="5" data-nore></div>
-       <button class="btn btn-primary" data-act="ivadd">ออกรหัสและส่งอีเมล</button>`)}</div>`;
-}
+/* หน้ารหัสเชิญถูกถอดออกแล้ว ครูพี่เลี้ยงและผู้บริหารสถานศึกษาสมัครได้เองที่หน้าสมัครสมาชิก
+   แล้วประธานหลักสูตรอนุมัติที่เมนู "คำขอสมัคร" ซึ่งทำหน้าที่ควบคุมสิทธิ์แทนรหัสเชิญ */
 
 /* ---------- 18. แผงธีม ---------- */
 const ICO={
@@ -4325,11 +4992,16 @@ function reportScopeText(){
 function buildReport(id){
   const stu=filteredStudents();
   const scope=reportScopeText();
+  /* ข้อมูลกำกับเอกสาร ต้องระบุผู้สร้าง วันที่จริง และเวอร์ชันกรอบสมรรถนะ
+     เพื่อให้ตรวจสอบย้อนหลังได้ว่าเอกสารฉบับใดอ้างอิงกรอบรุ่นไหน */
   const meta=[["ชื่อรายงาน",(REPORTS.find(r=>r.id===id)||{}).name],
     ["ขอบเขต",scope],["จำนวนผู้เรียน",stu.length],
     ["ผู้สร้างรายงาน",S.user?S.user.name:"—"],["บทบาท",ROLE_TH[S.role]||S.role],
-    ["วันที่สร้าง","3 กันยายน 2569"],["ภาคการศึกษา","1/2569"],
-    ["เวอร์ชันกรอบสมรรถนะ",FW.competencies.length+" สมรรถนะ · "+FW.levels.length+" ระดับ"]];
+    ["วันที่สร้าง",new Date().toISOString().slice(0,10)],
+    ["ภาคการศึกษา",(typeof LIVE_CFG!=="undefined"&&LIVE_CFG.term)||"1/2569"],
+    ["เวอร์ชันกรอบสมรรถนะ",(FW.version||"—")+" · "+FW.competencies.length+" สมรรถนะ · "+FW.levels.length+" ระดับ"],
+    ["กรอบสมรรถนะปรับปรุงล่าสุด",FW.updatedAt?String(FW.updatedAt).slice(0,10):"—"],
+    ["ที่มาของข้อมูล",(typeof liveOn==="function"&&liveOn())?"ฐานข้อมูลจริง (ชีต Assessments)":"ข้อมูลจำลองในเครื่อง"]];
   let head=[], rows=[], notes=[];
 
   if(id==="individual"){
@@ -4345,7 +5017,7 @@ function buildReport(id){
         fmt(ov),ov!==null?levelOf(FW,ov).th:"—",ok,comps.length,
         A.irt?fmt(A.irt.theta):"—",A.irt?fmt(A.irt.se):"—",(A.edm.risk*100).toFixed(1)]);
     });
-    notes.push("คะแนนเฉลี่ยคำนวณจาก (คะแนนอาจารย์นิเทศก์ + คะแนนครูพี่เลี้ยง) หารด้วย 2");
+    notes.push(SCORE_RULE); notes.push(SCORE_RULE_NOTE);
     notes.push("ค่า θ เปรียบเทียบได้เฉพาะภายในชั้นปีเดียวกัน");
     notes.push("ค่าความเสี่ยงมาจากแบบจำลองที่ยังไม่ได้สอบเทียบกับข้อมูลจริง ใช้ประกอบดุลยพินิจเท่านั้น");
   }
@@ -4382,7 +5054,7 @@ function buildReport(id){
     rows.sort((x,y)=>parseFloat(x[6])-parseFloat(y[6]));
   }
   else if(id==="progress"){
-    notes.push("คะแนนแต่ละรอบคำนวณจาก (คะแนนอาจารย์นิเทศก์ + คะแนนครูพี่เลี้ยง) หารด้วย 2");
+    notes.push("คะแนนแต่ละรอบ: "+SCORE_RULE);
     head=["รหัสนักศึกษา","ชื่อ-นามสกุล","สาขาวิชา","ชั้นปี","รอบที่ 1","รอบที่ 2","รอบที่ 3","การเปลี่ยนแปลง","แนวโน้ม"];
     stu.forEach(s=>{
       const h=HIST[s.id]; if(!h) return;
@@ -4797,17 +5469,21 @@ function raterOf(st,kind){
       || USERS.find(u=>!u.linkTo&&u.roles.includes(role))
       || {id:"unknown-"+kind,name:kind==="lec"?"อาจารย์นิเทศก์":"ครูพี่เลี้ยง"};
 }
-/** คู่คะแนนระดับตัวชี้วัดของผู้ประเมินสองฝ่าย ใช้เป็นฐานของสถิติทั้งหมด */
+/** คู่คะแนนระดับตัวชี้วัดของฝ่ายอาจารย์นิเทศก์กับฝ่ายครูพี่เลี้ยง ใช้เป็นฐานของสถิติทั้งหมด
+    ฝ่ายอาจารย์นิเทศก์คิดจากค่าเฉลี่ยของวิชาชีพครูกับวิชาเอก ให้ตรงกับกติกาคะแนนรวม
+    เก็บคะแนนประเมินตนเองไว้ด้วย เพื่อดูแนวโน้มการประเมินตนเองสูงหรือต่ำกว่าผู้ประเมินภายนอก */
 function irrPairs(){
   const rows=[];
   filteredStudents().forEach(st=>{
-    const y=st.year, L=RESP_L[st.id], M=RESP_M[st.id];
-    if(!L||!M) return;
+    const y=st.year, L=RESP_L[st.id], J=RESP_A[st.id], M=RESP_M[st.id], F=RESP_S[st.id];
+    if(!M||(!L&&!J)) return;
     const rl=raterOf(st,"lec"), rm=raterOf(st,"men");
     activeComps(FW,y).forEach(c=>indsOf(FW,y,c.id).forEach(i=>{
-      if(L[i.id]===undefined||M[i.id]===undefined) return;
+      const adv=[L&&L[i.id],J&&J[i.id]].filter(x=>x!==undefined&&x!==null&&x!==false);
+      if(!adv.length||!M||M[i.id]===undefined) return;
       rows.push({sid:st.id,student:st.name,program:st.program,year:y,comp:c,ind:i,
-        lec:L[i.id],men:M[i.id],lecId:rl.id,lecName:rl.name,menId:rm.id,menName:rm.name});
+        lec:mean(adv),men:M[i.id],slf:(F&&F[i.id]!==undefined)?F[i.id]:null,
+        lecId:rl.id,lecName:rl.name,menId:rm.id,menName:rm.name});
     }));
   });
   return rows;
@@ -4919,6 +5595,147 @@ function irrAnalyze(){
 }
 const irrBand=v=>v===null?["—","tag-n"]:v>=0.90?["ดีเยี่ยม","tag-ok"]:v>=0.75?["ดี","tag-ok"]:
   v>=0.60?["พอใช้","tag-warn"]:v>=0.40?["ต่ำ","tag-warn"]:["ต่ำมาก","tag-risk"];
+
+/* ============================================================
+   ความสอดคล้องของผู้ประเมินรายบุคคล
+   เทียบคะแนนที่ผู้ประเมินคนนี้ให้ กับค่ากลางของผู้ประเมินฝ่ายอื่นในเซลล์เดียวกัน
+   เซลล์ = (นักศึกษา × สมรรถนะ × รอบ) ซึ่งเป็นหน่วยที่เทียบกันได้ตรงที่สุด
+   ใช้ระเบียนจริงจาก ASSESS_LOG จึงเป็นผลของผู้ประเมินคนนั้นเอง ไม่ใช่ค่าเฉลี่ยของช่องทาง
+   ============================================================ */
+function advisorIRR(uid){
+  const me=userById(uid);
+  if(!me) return {n:0};
+  const cells=[];
+  visStudents().forEach(st=>{
+    const y=st.year, rounds=HIST[st.id]||[];
+    (ASSESS_LOG[st.id]||[]).forEach(a=>{
+      if(String(a.assessor_id)!==String(uid)) return;
+      const rater=raterByType(a.type); if(!rater) return;
+      const c=FW.competencies.find(x=>x.id===a.comp_id); if(!c) return;
+      const round=rounds.find(r=>String(r.no||0)===String(a.round_no))||null;
+      const own=compScoreBy(FW,st.id,c,y,rater.key,round?round[rater.key]:null);
+      if(own===null) return;
+      /* ค่ากลางของฝ่ายอื่น คิดจากผู้ประเมินทุกฝ่ายที่ไม่ใช่ช่องทางของตนเอง */
+      const others=RATERS.filter(x=>x.key!==rater.key)
+        .map(x=>compScoreBy(FW,st.id,c,y,x.key,round?round[x.key]:null))
+        .filter(v=>v!==null);
+      if(!others.length) return;
+      cells.push({sid:st.id,student:st.name,program:st.program,comp:c,
+        round:a.round_no,date:a.date,own,other:mean(others),d:own-mean(others),
+        target:cfgOf(FW,y,c.id).target});
+    });
+  });
+  if(cells.length<3) return {n:cells.length,me};
+
+  const own=cells.map(x=>x.own), oth=cells.map(x=>x.other), d=cells.map(x=>x.d);
+  const bias=mean(d), sdd=sdev(d)||1e-9, n=d.length;
+  const z=bias/(sdd/Math.sqrt(n));
+  const p=pTwoSided(z);
+  /* ขนาดอิทธิพลแบบ Cohen d ของค่าเบี่ยงเบนคู่ บอกว่าต่างกันมากพอจะสังเกตได้หรือไม่
+     ค่านัยสำคัญเพียงอย่างเดียวไม่พอ เพราะจำนวนเซลล์มากทำให้ค่าเล็กก็มีนัยสำคัญได้ */
+  const dz=bias/sdd;
+
+  /* ค่ากลางของคณะ คิดจากคะแนนทุกฝ่ายของนักศึกษาที่ผู้ประเมินรายนี้เห็น */
+  const facultyAll=[];
+  visStudents().forEach(st=>{
+    const y=st.year;
+    activeComps(FW,y).forEach(c=>RATERS.forEach(x=>{
+      const v=compScoreBy(FW,st.id,c,y,x.key); if(v!==null) facultyAll.push(v);
+    }));
+  });
+  const faculty=facultyAll.length?mean(facultyAll):null;
+
+  /* แยกรายสมรรถนะ เพื่อชี้ว่าความต่างเกิดเฉพาะบางด้านหรือทั่วทั้งกรอบ */
+  const byComp={};
+  cells.forEach(x=>{ const k=x.comp.id;
+    (byComp[k]=byComp[k]||{comp:x.comp,own:[],oth:[]}); byComp[k].own.push(x.own); byComp[k].oth.push(x.other); });
+  const comps=Object.values(byComp).map(o=>({
+    comp:o.comp,n:o.own.length,own:mean(o.own),other:mean(o.oth),
+    d:mean(o.own.map((v,i)=>v-o.oth[i])),
+  })).sort((a,b)=>b.d-a.d);
+
+  /* แยกรายรอบ ดูว่าแนวโน้มคงที่หรือเปลี่ยนไปตามเวลา */
+  const byRound={};
+  cells.forEach(x=>{ const k=String(x.round);
+    (byRound[k]=byRound[k]||{round:x.round,d:[],own:[]}); byRound[k].d.push(x.d); byRound[k].own.push(x.own); });
+  const rounds=Object.values(byRound).sort((a,b)=>a.round-b.round)
+    .map(o=>({round:o.round,n:o.d.length,d:mean(o.d),own:mean(o.own)}));
+
+  const verdict = p>=0.05 ? "สอดคล้องกับค่ากลาง"
+    : (bias>0 ? "ให้คะแนนสูงกว่าค่ากลางอย่างเป็นระบบ" : "ให้คะแนนต่ำกว่าค่ากลางอย่างเป็นระบบ");
+  const cls = p>=0.05 ? "tag-ok" : (Math.abs(dz)>=0.5 ? "tag-risk" : "tag-warn");
+
+  return {n, me, cells, ownMean:mean(own), otherMean:mean(oth), faculty,
+    bias, sdDiff:sdd, z, p, dz, verdict, cls,
+    exact:cells.filter(x=>Math.round(x.own)===Math.round(x.other)).length/n,
+    within1:cells.filter(x=>Math.abs(x.own-x.other)<=1).length/n,
+    r:pearson(own,oth), kappa:weightedKappa(own,oth,FW.levels.length),
+    students:new Set(cells.map(x=>x.sid)).size, comps, rounds};
+}
+
+/** แผงความสอดคล้องของผู้ประเมิน แสดงในหน้าโปรไฟล์ของอาจารย์นิเทศก์และครูพี่เลี้ยง */
+function pfRaterIRR(u){
+  const A=advisorIRR(u.id);
+  if(!A.n||A.n<3) return card("ความสอดคล้องระหว่างผู้ประเมิน",
+    "เทียบคะแนนที่ท่านให้ กับค่ากลางของผู้ประเมินฝ่ายอื่นในนักศึกษาและสมรรถนะเดียวกัน",
+    `<div class="empty">ยังมีระเบียนการประเมินของท่านไม่พอสำหรับคำนวณ (พบ ${A.n||0} รายการ ต้องมีอย่างน้อย 3)
+      ผลจะปรากฏเมื่อท่านบันทึกผลการประเมินและมีผู้ประเมินฝ่ายอื่นประเมินนักศึกษาคนเดียวกัน</div>`);
+
+  const dirWord=A.bias>0?"สูงกว่า":"ต่ำกว่า";
+  const [rBand,rCls]=irrBand(A.r);
+  const [kBand,kCls]=irrBand(A.kappa);
+
+  const compRows=A.comps.map(o=>`<tr>
+    <td style="font-size:.82rem">${esc(o.comp.th)}<div class="sub">${o.comp.code} · ${o.n} เซลล์</div></td>
+    <td class="num">${fmt(o.own)}</td><td class="num">${fmt(o.other)}</td>
+    <td class="num" style="font-weight:600;color:${Math.abs(o.d)<0.2?"var(--muted)":o.d>0?"var(--warn)":"var(--c1)"}">
+      ${(o.d>=0?"+":"")+o.d.toFixed(2)}</td></tr>`).join("");
+
+  const roundRows=A.rounds.map(o=>`<tr><td>ครั้งที่ ${o.round}</td><td class="num">${o.n}</td>
+    <td class="num">${fmt(o.own)}</td>
+    <td class="num" style="font-weight:600;color:${Math.abs(o.d)<0.2?"var(--muted)":o.d>0?"var(--warn)":"var(--c1)"}">
+      ${(o.d>=0?"+":"")+o.d.toFixed(2)}</td></tr>`).join("");
+
+  const reading = A.p>=0.05
+    ? `คะแนนของท่านไม่ต่างจากค่ากลางอย่างมีนัยสำคัญทางสถิติ (p = ${A.p.toFixed(3)}) ถือว่าใช้เกณฑ์สอดคล้องกับผู้ประเมินฝ่ายอื่น`
+    : `คะแนนของท่าน${dirWord}ค่ากลางเฉลี่ย ${Math.abs(A.bias).toFixed(2)} ระดับ และต่างอย่างมีนัยสำคัญ (p = ${A.p.toFixed(3)})
+       ขนาดอิทธิพล d<sub>z</sub> = ${A.dz.toFixed(2)} ${Math.abs(A.dz)>=0.8?"ถือว่าใหญ่":Math.abs(A.dz)>=0.5?"ถือว่าปานกลาง":"ถือว่าเล็ก"}`;
+
+  return `<div class="stack">
+    ${card("ความสอดคล้องระหว่างผู้ประเมิน",
+      `เทียบคะแนนที่ท่านให้ กับค่ากลางของผู้ประเมินฝ่ายอื่นในเซลล์เดียวกัน · ${A.n} เซลล์ จากนักศึกษา ${A.students} คน`,
+      `<div class="grid g4">
+        ${stat("คะแนนเฉลี่ยของท่าน",fmt(A.ownMean),"จากระเบียนที่ท่านบันทึกจริง")}
+        ${stat("ค่ากลางของฝ่ายอื่น",fmt(A.otherMean),"เซลล์เดียวกับที่ท่านประเมิน")}
+        ${stat("ส่วนต่างเฉลี่ย",(A.bias>=0?"+":"")+A.bias.toFixed(2),
+          `<span class="tag ${A.cls}">${A.verdict}</span>`)}
+        ${stat("ค่ากลางของคณะ",fmt(A.faculty),"ทุกฝ่ายในขอบเขตของท่าน")}
+      </div>
+      <div class="notebox" style="margin-top:.9rem">${reading}<br>
+        ทดสอบด้วย paired t-test บนส่วนต่างรายเซลล์ · ค่าบวกหมายถึงท่านให้สูงกว่าฝ่ายอื่น
+        ผลนี้ใช้เพื่อสอบเทียบความเข้าใจเกณฑ์ร่วมกัน ไม่ใช่การประเมินผลการปฏิบัติงานของท่าน</div>`)}
+
+    ${card("ความสอดคล้องเชิงสถิติ","ตัวเลขทั้งหมดคำนวณจากคู่คะแนนของท่านกับค่ากลางของฝ่ายอื่น",
+      `<table class="tight"><tbody>
+        <tr><td>ตรงกันพอดี (ปัดเป็นระดับ)</td><td class="num">${(A.exact*100).toFixed(0)}%</td></tr>
+        <tr><td>ต่างกันไม่เกิน 1 ระดับ</td><td class="num">${(A.within1*100).toFixed(0)}%</td></tr>
+        <tr><td>สหสัมพันธ์เพียร์สัน (r)</td><td class="num">${fmt(A.r,3)} <span class="tag ${rCls}">${rBand}</span></td></tr>
+        <tr><td>แคปปาถ่วงน้ำหนัก</td><td class="num">${fmt(A.kappa,3)} <span class="tag ${kCls}">${kBand}</span></td></tr>
+        <tr><td>ส่วนเบี่ยงเบนของส่วนต่าง</td><td class="num">${fmt(A.sdDiff,2)}</td></tr>
+      </tbody></table>`,"",false)}
+
+    <div class="grid g2" style="align-items:start">
+      ${card("ส่วนต่างรายสมรรถนะ","เรียงจากด้านที่ท่านให้สูงกว่าฝ่ายอื่นมากที่สุด",
+        `<div class="scroll-y"><table class="tight"><thead><tr><th>สมรรถนะ</th>
+          <th class="num">ของท่าน</th><th class="num">ฝ่ายอื่น</th><th class="num">ส่วนต่าง</th>
+        </tr></thead><tbody>${compRows}</tbody></table></div>`,"",false)}
+      ${card("ส่วนต่างรายรอบ","ดูว่าแนวโน้มคงที่หรือเปลี่ยนไปตามรอบการประเมิน",
+        `<table class="tight"><thead><tr><th>รอบ</th><th class="num">เซลล์</th>
+          <th class="num">ของท่าน</th><th class="num">ส่วนต่าง</th></tr></thead><tbody>${roundRows}</tbody></table>`,"",false)}
+    </div>
+    <div class="notebox">${docStamp("ที่มา: ระเบียนการประเมินของท่านในชีต Assessments")}</div>
+  </div>`;
+}
 
 /* ---------- หน้าจอ ---------- */
 function irrPage(){
@@ -5064,16 +5881,15 @@ function shellView(){
     ? `<label for="rs">บทบาท</label><select id="rs" class="inp" style="width:auto" data-act="role">${S.user.roles.map(r=>`<option value="${r}" ${S.role===r?"selected":""}>${ROLE_TH[r]||r}</option>`).join("")}</select>`
     : `<span class="tag tag-n">${ROLE_TH[S.role]||S.role}</span>`;
   let body="";
-  const canYear=["Administrator","Program Chair","Lecturer"].includes(S.role);   // ตั้งค่ากรอบรายชั้นปี
+  const canYear=["Administrator","Program Chair","Lecturer","MajorAdvisor"].includes(S.role);   // ตั้งค่ากรอบรายชั้นปี
   const canMaster=["Administrator","Program Chair"].includes(S.role);            // แก้รายการสมรรถนะหลักและระดับ
   const ro=!canYear;
   switch(cur){
     case "dashboard":
       body = S.role==="Student"?studentDash()
-           :(S.role==="Lecturer"||S.role==="Mentor"||S.role==="Director")?lecturerDash()
+           :(isAdvisor(S.role)||S.role==="Mentor"||S.role==="Director")?lecturerDash()
            :(S.role==="Dean"||S.role==="Program Chair")?execDash():adminDash(); break;
     case "users": body=usersPage(); break;
-    case "invitations": body=invitationsPage(); break;
     case "approvals": body=approvalsPage(); break;
     case "framework": body=frameworkPage(!canYear,!canMaster); break;
     case "psychometrics": body=psyPage(); break;
@@ -5115,11 +5931,42 @@ function shellView(){
 }
 function view(){
   if(S.user) return shellView();
-  if(S.screen==="register") return registerView();
-  if(S.screen==="regstudent") return regStudentView();
+  /* register กับ regstudent ใช้หน้าเดียวกันแล้ว ต่างกันแค่ประเภทที่เลือกไว้ให้ล่วงหน้า */
+  if(S.screen==="register"||S.screen==="regstudent") return registerView();
   if(S.screen==="forgot") return forgotView();
   return loginView();
 }
+/* ---------- แถบแจ้งเตือนการทำงาน ----------
+   วางไว้นอก #app จึงไม่ถูกลบเมื่อหน้าจอวาดใหม่ระหว่างรอเซิร์ฟเวอร์ตอบ
+   ใช้บอกผู้ใช้ว่าระบบกำลังบันทึกอยู่ และบอกผลเมื่อบันทึกเสร็จ */
+let TOAST_TIMER=null;
+function toast(msg,kind,sticky){
+  let el=document.getElementById("toast");
+  if(!el){
+    el=document.createElement("div");
+    el.id="toast";
+    el.setAttribute("role","status");
+    el.setAttribute("aria-live","polite");
+    el.style.cssText="position:fixed;left:50%;top:1.1rem;transform:translateX(-50%);z-index:200;"+
+      "max-width:min(30rem,92vw);padding:.65rem 1.05rem;border-radius:10px;font-size:.9rem;line-height:1.5;"+
+      "box-shadow:0 6px 24px rgba(0,0,0,.18);border:1px solid var(--line);transition:opacity .18s;pointer-events:none";
+    document.body.appendChild(el);
+  }
+  const style={
+    wait:["var(--surface)","var(--text)","var(--line)"],
+    ok:["var(--ok-bg)","var(--ok)","var(--ok-line)"],
+    err:["var(--risk-bg)","var(--risk)","var(--risk-line)"],
+  }[kind||"wait"];
+  el.style.background=style[0]; el.style.color=style[1]; el.style.borderColor=style[2];
+  el.textContent=msg;
+  el.style.opacity="1";
+  clearTimeout(TOAST_TIMER);
+  if(!sticky) TOAST_TIMER=setTimeout(()=>{ el.style.opacity="0"; },kind==="err"?5200:2800);
+}
+const toastSaving =()=>toast("⏳ กำลังบันทึกข้อมูล…","wait",true);
+const toastSaved  =m=>toast("✅ "+(m||"บันทึกข้อมูลลงฐานข้อมูลสำเร็จ"),"ok");
+const toastFailed =m=>toast("⚠️ "+(m||"บันทึกข้อมูลไม่สำเร็จ"),"err");
+
 function render(){
   applyTheme();
   document.getElementById("app").innerHTML=view();
@@ -5161,10 +6008,16 @@ document.addEventListener("click",e=>{
       const back=document.getElementById(v); if(back){ back.focus(); back.setSelectionRange(back.value.length,back.value.length); }
       re=false; break; }
     case "go": S.screen=v; S.err=""; S.notice=""; S.forgotSent=false;
-      if(v==="register"){S.regStep=1;} if(v==="regstudent"){S.stuStep=1;S.stuNotice="";} break;
+      /* ทั้งสองปุ่มเปิดหน้าสมัครหน้าเดียวกัน ต่างกันแค่ประเภทที่เลือกไว้ให้ล่วงหน้า */
+      if(v==="register"||v==="regstudent")
+        S.reg={step:1, kind:v==="register"?"mentor":"student", data:{}, found:null, notice:"", ref:""};
+      break;
     case "login": {
       const em=val("em"), pw=val("pw");
-      const u=USERS.find(x=>x.email.toLowerCase()===em.toLowerCase());
+      const key=em.toLowerCase();
+      /* เข้าสู่ระบบด้วยอีเมลหรือชื่อผู้ใช้ก็ได้ ให้ตรงกับ findUserByLogin_ ใน Code.gs */
+      const u=USERS.find(x=>x.email.toLowerCase()===key)
+            ||USERS.find(x=>String(x.code||"").toLowerCase()===key);
       if(!u||pw!==(u.pw||PASSWORD)){S.err="อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง";break;}
       if(u.status!=="active"){S.err="บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ";break;}
       S.err="";
@@ -5174,102 +6027,100 @@ document.addEventListener("click",e=>{
       else S.err="รหัสยืนยันไม่ถูกต้อง รหัสมีอายุ 5 นาที"; break; }
     case "otpback": S.otpUser=null; S.err=""; break;
     case "logout": S.user=null; S.role=null; S.screen="login"; S.err=""; S.notice=""; break;
-    /* --- สมัครสมาชิกครูพี่เลี้ยง --- */
-    case "regstep": S.regStep=+v; S.err=""; break;
-    case "regcheck": { const code=val("ic"); S.regData.code=code;
-      const iv=INVITES.find(x=>x.code.toUpperCase()===code.toUpperCase());
-      if(!iv){S.err="ไม่พบรหัสเชิญนี้ กรุณาติดต่อประธานหลักสูตรที่ออกรหัสให้ท่าน";break;}
-      if(iv.used>=iv.quota){S.err="รหัสเชิญนี้ถูกใช้ครบจำนวนแล้ว";break;}
-      const exp=new Date(iv.expires); if(!isNaN(exp)&&exp<new Date("2026-09-03")){S.err="รหัสเชิญนี้หมดอายุแล้ว";break;}
-      S.regInvite=iv; S.regData.sch=S.regData.sch||iv.school; S.err=""; S.regStep=2; break; }
-    case "regnext2": { const d=S.regData;
-      d.pre=document.getElementById("r_pre").value; d.fn=val("r_fn").trim(); d.ln=val("r_ln").trim();
-      d.tel=normTel(val("r_tel")); d.em=normEmail(val("r_em"));
-      if(!d.fn||!d.ln){S.err="กรุณากรอกชื่อและนามสกุล";break;}
-      if(!/^0\d{8,9}$/.test(d.tel)){S.err="หมายเลขโทรศัพท์ไม่ถูกต้อง ตัวอย่างเช่น 0812345678";break;}
-      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.em)){S.err="รูปแบบอีเมลไม่ถูกต้อง ตัวอย่างเช่น name@school.ac.th";break;}
-      if(USERS.some(u=>u.email.toLowerCase()===d.em.toLowerCase())||PENDING.some(x=>x.email.toLowerCase()===d.em.toLowerCase())){
-        S.err="อีเมลนี้ถูกใช้ในระบบแล้ว";break;}
-      S.err=""; S.regStep=3; break; }
-    case "regnext3": { const d=S.regData;
-      d.sch=val("r_sch"); d.aff=document.getElementById("r_aff").value; d.prog=document.getElementById("r_prog").value;
-      d.grp=document.getElementById("r_grp").value; d.lvl=document.getElementById("r_lvl").value;
-      d.exp=val("r_exp");
-      if(!d.sch){S.err="กรุณาระบุโรงเรียน";break;}
-      if(d.exp!==""&&(+d.exp<0||+d.exp>50)){S.err="ประสบการณ์การสอนต้องอยู่ระหว่าง 0 ถึง 50 ปี";break;}
-      S.err=""; S.regStep=4; break; }
-    case "regnext4": { const p1=val("r_p1"), p2=val("r_p2");
-      if(p1.length<PW_MIN){S.err=`รหัสผ่านต้องมีความยาวอย่างน้อย ${PW_MIN} อักขระ`;break;}
-      if(p1!==p2){S.err="รหัสผ่านทั้งสองช่องไม่ตรงกัน";break;}
-      if(!document.getElementById("r_c1").checked||!document.getElementById("r_c2").checked||!document.getElementById("r_c3").checked){
-        S.err="กรุณายอมรับเงื่อนไขให้ครบทั้งสามข้อ";break;}
-      S.regData.pw=p1; S.err=""; S.regStep=5; break; }
-    case "regsubmit": { const d=S.regData;
-      S.regRef="REQ-"+String(Date.now()).slice(-6);
-      PENDING.unshift({id:nid("p"),ref:S.regRef,name:(d.pre+" "+d.fn+" "+d.ln).trim(),email:d.em,tel:d.tel,
-        school:d.sch,aff:d.aff,program:d.prog,group:d.grp,teachLevel:d.lvl,exp:d.exp,
-        role:S.regInvite.role,at:"2026-09-03"});
-      S.err=""; S.regStep=6; break; }
-
-    /* --- สมัครสมาชิกนักศึกษา --- */
-    /* ย้อนกลับจากขั้นตั้งรหัสผ่าน ต้องข้ามขั้นฝึกประสบการณ์ที่ถูกข้ามไปตอนเดินหน้าด้วย */
-    case "stustep": { let n=+v;
-      if(n===3&&+(S.stuData.year||0)<3) n=2;
-      S.stuStep=n; S.err=""; break; }
-    case "stucheck": { const code=val("s_code"), dob=val("s_dob");
-      if(!code){S.err="กรุณากรอกรหัสนักศึกษา";break;}
-      if(!dob){S.err="กรุณาระบุวันเดือนปีเกิดเพื่อยืนยันตัวตน";break;}
-      const found=students().find(x=>String(x.code)===code);
-      if(found&&USERS.some(u=>u.id===found.id&&u.status==="active"&&u.email&&!u.email.startsWith("std"))&&found.email==="student@ptru.ac.th"){
-        /* บัญชีสาธิตที่เปิดใช้แล้ว ยังให้ทดลองเส้นทางต่อได้ */
-      }
-      S.stuFound=found||null;
-      S.stuData={code,dob,
-        pre:found?PREFIX_STU[0]:PREFIX_STU[0],
-        fn:found?String(found.name).split(" ")[0]:"",
-        ln:found?String(found.name).split(" ").slice(1).join(" "):"",
-        prog:found?found.program:PROGRAMS[0].id,
-        year:found?found.year:1,
-        em:found?found.email:"",
-        tel:"", sch:found&&found.school?found.school:SCHOOLS[0], term:"1/2569", adv:""};
-      S.stuNotice=""; S.err=""; S.stuStep=2; break; }
-    case "stunext2": { const d=S.stuData;
-      d.pre=document.getElementById("s_pre").value; d.fn=val("s_fn").trim(); d.ln=val("s_ln").trim();
-      d.prog=document.getElementById("s_prog").value; d.year=+document.getElementById("s_year").value;
-      d.em=normEmail(val("s_em")); d.tel=normTel(val("s_tel"));
-      if(!d.fn||!d.ln){S.err="กรุณากรอกชื่อและนามสกุล";break;}
-      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.em)){S.err="รูปแบบอีเมลไม่ถูกต้อง ตัวอย่างเช่น name@ptru.ac.th";break;}
-      const dup=USERS.find(u=>u.email.toLowerCase()===d.em.toLowerCase()&&(!S.stuFound||u.id!==S.stuFound.id));
-      if(dup){S.err="อีเมลนี้ถูกใช้กับบัญชีอื่นแล้ว";break;}
-      if(d.tel&&!/^0\d{8,9}$/.test(d.tel)){S.err="หมายเลขโทรศัพท์ไม่ถูกต้อง ตัวอย่างเช่น 0812345678";break;}
-      /* ชั้นปีที่ 1 และ 2 ยังไม่ต้องระบุโรงเรียนฝึกประสบการณ์ ขั้นที่ 3 จึงไม่มีอะไรให้กรอก
-         ข้ามไปตั้งรหัสผ่านเลย เพื่อลดขั้นตอนของผู้สมัครกลุ่มใหญ่ที่สุด */
-      S.err="";
-      if(+d.year>=3){ S.stuStep=3; }
-      else { d.sch=""; d.adv=""; S.stuStep=4; }
-      break; }
-    case "stunext3": { const d=S.stuData;
-      if(+d.year>=3){ d.sch=document.getElementById("s_sch").value; d.term=val("s_term");
-        if(!d.sch){S.err="กรุณาเลือกโรงเรียนฝึกประสบการณ์";break;} } else d.sch="";
-      d.adv=document.getElementById("s_adv").value;
-      S.err=""; S.stuStep=4; break; }
-    case "stunext4": { const p1=val("s_p1"), p2=val("s_p2");
-      if(p1.length<PW_MIN){S.err=`รหัสผ่านต้องมีความยาวอย่างน้อย ${PW_MIN} อักขระ`;break;}
-      if(p1!==p2){S.err="รหัสผ่านทั้งสองช่องไม่ตรงกัน";break;}
-      if(!document.getElementById("s_c1").checked||!document.getElementById("s_c2").checked){
-        S.err="กรุณายอมรับเงื่อนไขให้ครบทั้งสองข้อ";break;}
-      S.stuData.pw=p1; S.err=""; S.stuStep=5; break; }
-    case "stuverify": { if(val("s_otp")!=="246810"){S.err="รหัสยืนยันไม่ถูกต้อง รหัสมีอายุ 10 นาที";break;}
-      const d=S.stuData, full=(d.fn+" "+d.ln).trim();
-      if(S.stuFound){
-        Object.assign(S.stuFound,{name:full,email:d.em,program:d.prog,year:+d.year,
-          school:d.sch||S.stuFound.school,status:"active"});
+    /* --- สมัครสมาชิก (ชุดเดียว ใช้ร่วมกันทุกประเภทผู้สมัคร) --- */
+    case "regkind": { S.reg.kind=v; S.reg.found=null; S.reg.notice=""; S.err=""; break; }
+    case "regback": { S.reg.step=Math.max(1,+v||1); S.err=""; break; }
+    case "regnext1": {
+      const d=S.reg.data;
+      if(regIsStudent()){
+        const code=val("rg_code").trim();
+        const em=normEmail(val("rg_em1"));
+        const prog=(document.getElementById("rg_prog1")||{}).value||"";
+        if(!code){S.err="กรุณากรอกรหัสนักศึกษา";break;}
+        if(!em){S.err="กรุณากรอกอีเมลมหาวิทยาลัย";break;}
+        if(!isStudentEmail(em)){S.err=`อีเมลต้องเป็นของมหาวิทยาลัย ลงท้ายด้วย @${STUDENT_EMAIL_DOMAIN} เท่านั้น`;break;}
+        if(!prog){S.err="กรุณาเลือกสาขาวิชา";break;}
+        const found=students().find(x=>String(x.code)===code)||null;
+        if(USERS.some(u=>u.email.toLowerCase()===em&&(!found||u.id!==found.id))){
+          S.err="อีเมลนี้ถูกใช้กับบัญชีอื่นแล้ว";break;}
+        S.reg.found=found;
+        S.reg.notice=found?"":"ไม่พบรหัสนี้ในทะเบียน ท่านสมัครต่อได้ เจ้าหน้าที่จะตรวจสอบสถานภาพภายหลัง";
+        S.reg.data={code, em, prog,
+          pre:d.pre||PREFIX_STU[0],
+          fn:found?String(found.name).split(" ")[0]:(d.fn||""),
+          ln:found?String(found.name).split(" ").slice(1).join(" "):(d.ln||""),
+          year:found?found.year:(d.year||1),
+          tel:d.tel||"", sch:(found&&found.school)||d.sch||"",
+          c1:d.c1, c2:d.c2};
       } else {
-        const u={id:nid("n"),code:d.code,name:full,email:d.em,roles:["Student"],
-          program:d.prog,year:+d.year,school:d.sch||"",status:"active",unverified:true};
-        USERS.push(u);
+        S.reg.data=Object.assign({pre:PREFIX_TCH[0],prog:PROGRAMS[0].id,
+          aff:AFFILIATIONS[0],grp:SUBJECT_GROUPS[0],lvl:TEACH_LEVELS[0]},d);
       }
-      S.err=""; S.stuStep=6; break; }
+      S.err=""; S.reg.step=2; break; }
+    case "regnext2": {
+      const d=S.reg.data, g=id=>{const e=document.getElementById(id); return e?String(e.value):"";};
+      d.pre=g("rg_pre"); d.fn=val("rg_fn").trim(); d.ln=val("rg_ln").trim();
+      d.tel=normTel(val("rg_tel")); d.em=normEmail(val("rg_em"));
+      d.prog=g("rg_prog"); d.sch=val("rg_sch").trim();
+      if(!d.fn||!d.ln){S.err="กรุณากรอกชื่อและนามสกุล";break;}
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.em)){S.err="รูปแบบอีเมลไม่ถูกต้อง";break;}
+      if(regIsStudent()&&!isStudentEmail(d.em)){
+        S.err=`อีเมลนักศึกษาต้องลงท้ายด้วย @${STUDENT_EMAIL_DOMAIN}`;break;}
+      if(d.tel&&!/^0\d{8,9}$/.test(d.tel)){S.err="หมายเลขโทรศัพท์ไม่ถูกต้อง ตัวอย่างเช่น 0812345678";break;}
+      const mine=S.reg.found?S.reg.found.id:null;
+      if(USERS.some(u=>u.email.toLowerCase()===d.em.toLowerCase()&&u.id!==mine)){
+        S.err="อีเมลนี้ถูกใช้กับบัญชีอื่นแล้ว";break;}
+      if(regIsStudent()){
+        d.year=+g("rg_year")||1;
+      } else if(regIsAdvisor()){
+        /* อาจารย์นิเทศก์เป็นบุคลากรของคณะ ไม่ต้องกรอกโรงเรียนหรือสังกัด */
+        d.sch=""; d.aff=""; d.lvl="";
+        d.grp=S.reg.kind==="major"?g("rg_grp"):"";
+        d.exp=val("rg_exp");
+        if(!d.tel){S.err="กรุณากรอกหมายเลขโทรศัพท์เพื่อให้คณะติดต่อกลับได้";break;}
+        if(d.exp!==""&&(+d.exp<0||+d.exp>50)){S.err="ประสบการณ์การนิเทศต้องอยู่ระหว่าง 0 ถึง 50 ปี";break;}
+      } else {
+        if(!d.sch){S.err="กรุณาระบุโรงเรียน";break;}
+        if(!d.tel){S.err="กรุณากรอกหมายเลขโทรศัพท์เพื่อให้ประธานหลักสูตรติดต่อกลับได้";break;}
+        d.aff=g("rg_aff"); d.grp=g("rg_grp"); d.lvl=g("rg_lvl"); d.exp=val("rg_exp");
+        if(d.exp!==""&&(+d.exp<0||+d.exp>50)){S.err="ประสบการณ์การสอนต้องอยู่ระหว่าง 0 ถึง 50 ปี";break;}
+      }
+      S.err=""; S.reg.step=3; break; }
+    case "regsubmit": {
+      /* ทุกประเภทได้บัญชีที่ใช้งานได้ทันที ด้วยรหัสผ่านที่ผู้สมัครตั้งเอง
+         บุคลากรยังถูกบันทึกไว้ในคิวคำขอ เพื่อให้ประธานหลักสูตรตรวจสอบสิทธิ์ย้อนหลัง */
+      const d=S.reg.data, stu=regIsStudent();
+      const chk=id=>!!(document.getElementById(id)||{}).checked;
+      d.c1=chk("rg_c1"); d.c2=chk("rg_c2");
+      if(!d.c1||!d.c2){S.err="กรุณายอมรับเงื่อนไขให้ครบทุกข้อ";break;}
+      const p1=val("rg_p1"), p2=val("rg_p2");
+      if(p1.length<PW_MIN){S.err=`รหัสผ่านต้องมีความยาวอย่างน้อย ${PW_MIN} อักขระ`;break;}
+      if(p1!==p2){S.err="รหัสผ่านทั้งสองช่องไม่ตรงกัน";break;}
+      d.pw=p1;
+      const full=[d.fn,d.ln].filter(Boolean).join(" ").trim();
+      const uname=(d.code||"").trim()||String(d.em||"").split("@")[0];
+      if(USERS.some(u=>String(u.code||"").toLowerCase()===uname.toLowerCase()
+                    &&(!S.reg.found||u.id!==S.reg.found.id))){
+        S.err=`ชื่อผู้ใช้ ${uname} ถูกใช้ในระบบแล้ว กรุณาใช้อีเมลอื่น`;break;}
+      S.reg.username=uname;
+      if(stu&&S.reg.found){
+        Object.assign(S.reg.found,{name:full,email:d.em,program:d.prog,year:+d.year,
+          school:d.sch||S.reg.found.school,status:"active",pw:p1});
+      } else {
+        USERS.push({id:nid("n"),code:uname,name:[d.pre,full].filter(Boolean).join(" ").trim(),
+          email:d.em,roles:[REG_ROLE[S.reg.kind]||"Student"],
+          program:d.prog,year:stu?+d.year:undefined,school:d.sch||"",
+          group:d.grp||"",teachLevel:d.lvl||"",aff:d.aff||"",exp:d.exp||"",
+          status:"active",unverified:stu&&!S.reg.found,pw:p1});
+      }
+      if(!stu){
+        S.reg.ref="REQ-"+String(Date.now()).slice(-6);
+        PENDING.unshift({id:nid("p"),ref:S.reg.ref,name:[d.pre,full].filter(Boolean).join(" ").trim(),
+          email:d.em,tel:d.tel,school:d.sch,aff:d.aff,program:d.prog,group:d.grp,teachLevel:d.lvl,
+          exp:d.exp,role:REG_ROLE[S.reg.kind]||"Mentor",
+          at:new Date().toISOString().slice(0,10)});
+      }
+      S.err=""; S.reg.step=4; break; }
     case "forgot": S.forgotSent=true; break;
 
     /* --- ธีม --- */
@@ -5297,38 +6148,48 @@ document.addEventListener("click",e=>{
       USERS=USERS.filter(x=>x.id!==v&&x.linkTo!==v); delete RESP[v];
       setMsg(`ลบบัญชี ${u.name} แล้ว`); break; }
     case "usrsave": {
-      const d={name:val("uf_name"),code:val("uf_code"),email:val("uf_email"),
+      const d={name:val("uf_name"),code:val("uf_code"),email:normEmail(val("uf_email")),
         role:document.getElementById("uf_role").value,program:document.getElementById("uf_prog").value,
-        year:document.getElementById("uf_year").value,school:document.getElementById("uf_school").value,
-        status:document.getElementById("uf_status").value};
+        year:document.getElementById("uf_year").value,school:val("uf_school"),
+        status:document.getElementById("uf_status").value,
+        password:(document.getElementById("uf_pw")||{}).value||""};
       if(!d.name||!d.email){S.err="กรุณาระบุชื่อและอีเมล";break;}
       if(d.role==="Student"&&(!d.program||!d.year)){S.err="บัญชีนักศึกษาต้องระบุสาขาวิชาและชั้นปี";break;}
-      if(d.role==="Mentor"&&!d.school){S.err="บัญชีครูพี่เลี้ยงต้องระบุโรงเรียน";break;}
+      if((d.role==="Mentor"||d.role==="Director")&&!d.school){S.err="บัญชีครูพี่เลี้ยงและผู้บริหารสถานศึกษาต้องระบุโรงเรียน";break;}
+      if(d.password&&d.password.length<PW_MIN){S.err=`รหัสผ่านต้องมีความยาวอย่างน้อย ${PW_MIN} อักขระ`;break;}
       const dup=USERS.find(u=>u.email.toLowerCase()===d.email.toLowerCase()&&u.id!==v);
       if(dup){S.err="อีเมลนี้ถูกใช้กับบัญชีอื่นแล้ว";break;}
+      /* ชื่อผู้ใช้ใช้เข้าสู่ระบบได้ จึงต้องไม่ซ้ำกับชื่อผู้ใช้หรืออีเมลของบัญชีอื่น */
+      if(d.code){
+        const low=d.code.toLowerCase();
+        const clash=USERS.find(u=>u.id!==v&&(String(u.code||"").toLowerCase()===low||u.email.toLowerCase()===low));
+        if(clash){S.err=`ชื่อผู้ใช้ "${d.code}" ถูกใช้ในระบบแล้ว กรุณาตั้งชื่ออื่น`;break;}
+      }
       S.err="";
       if(v){ const u=userById(v);
         Object.assign(u,{name:d.name,code:d.code,email:d.email,roles:[d.role],program:d.program||undefined,
           year:d.year?+d.year:undefined,school:d.school||undefined,status:d.status});
-        setMsg(`บันทึกการแก้ไขบัญชี ${d.name} แล้ว`);
+        if(d.password) u.pw=d.password;
+        setMsg(`บันทึกการแก้ไขบัญชี ${d.name} แล้ว`+(d.password?" และตั้งรหัสผ่านใหม่ให้แล้ว":""));
       } else {
         const u={id:nid("n"),name:d.name,code:d.code||"—",email:d.email,roles:[d.role],
           program:d.program||undefined,year:d.year?+d.year:undefined,school:d.school||undefined,status:d.status};
+        if(d.password) u.pw=d.password;
         USERS.push(u);
-        setMsg(`เพิ่มบัญชี ${d.name} แล้ว บัญชีใหม่ยังไม่มีข้อมูลผลการประเมิน`);
+        setMsg(`เพิ่มบัญชี ${d.name} แล้ว`+(d.password
+          ?` เข้าสู่ระบบด้วยชื่อผู้ใช้ ${d.code||d.email} และรหัสผ่านที่ท่านตั้งไว้`
+          :" ระบบจะส่งรหัสผ่านชั่วคราวไปทางอีเมล"));
       }
       S.usrEdit=null; S.usrTab="list"; break; }
 
-    /* --- คำขอและรหัสเชิญ --- */
-    case "appok": { const p=PENDING.find(x=>x.id===v);
-      USERS.push({id:nid("n"),name:p.name,code:"MTR"+(USERS.length),email:p.email,roles:[p.role],
+    /* --- คำขอสมัคร --- */
+    case "appok": { const p=PENDING.find(x=>x.id===v); if(!p) break;
+      const uname=(String(p.email||"").split("@")[0]||"user")+String(USERS.length);
+      USERS.push({id:nid("n"),name:p.name,code:uname,email:p.email,roles:[p.role],
         school:p.school,program:p.program||undefined,status:"active"});
-      PENDING=PENDING.filter(x=>x.id!==v); setMsg(`อนุมัติและสร้างบัญชีให้ ${p.name} แล้ว`); break; }
+      PENDING=PENDING.filter(x=>x.id!==v);
+      setMsg(`อนุมัติและสร้างบัญชีให้ ${p.name} แล้ว ชื่อผู้ใช้ ${uname} · ระบบส่งรหัสผ่านทางอีเมลแล้ว`); break; }
     case "apprej": PENDING=PENDING.filter(x=>x.id!==v); setMsg("ปฏิเสธคำขอแล้ว ระบบแจ้งผลทางอีเมลให้ผู้สมัคร"); break;
-    case "ivadd": { const sc=val("iv_school"); if(!sc){S.err="กรุณาระบุโรงเรียน";break;}
-      const role=document.getElementById("iv_role").value;
-      INVITES.unshift({id:nid("iv"),code:"PTRU-"+(role==="Mentor"?"MTR":"DIR")+"-"+Math.random().toString(36).slice(2,6).toUpperCase(),
-        role,school:sc,term:"1/2569",expires:"2026-09-30",used:0,quota:+val("iv_quota")||5}); break; }
 
     /* --- กรอบสมรรถนะ --- */
     case "setyear": S.year=+v; break;
@@ -5503,7 +6364,11 @@ document.addEventListener("click",e=>{
 
     /* --- การประเมิน --- */
     case "asscore": S.asScores[v]=+k; S.asSaved=false; break;
-    case "assave": S.asSaved=true; break;
+    case "assave":
+      S.asSaved=true;
+      /* โหมดจริงจะมี livePush แจ้งสถานะการบันทึกให้เอง ตรงนี้จึงแจ้งเฉพาะโหมดสาธิต */
+      if(!(typeof liveOn==="function"&&liveOn())) toast("✅ บันทึกผลการประเมินแล้ว (โหมดสาธิต ยังไม่เขียนลงฐานข้อมูล)","ok");
+      break;
 
     /* --- แฟ้มสะสมงาน --- */
     case "evcomp": { const i=S.evNew.comps.indexOf(v);
@@ -5673,13 +6538,8 @@ document.addEventListener("input",e=>{
   }
 });
 
-document.addEventListener("keydown",e=>{
-  if(e.key!=="Enter") return;
-  const id=e.target.id;
-  if(id==="em"||id==="pw") document.querySelector('[data-act="login"]').click();
-  if(id==="otp") document.querySelector('[data-act="otp"]').click();
-  if(id==="ic") document.querySelector('[data-act="regcheck"]').click();
-});
+/* ตัวจัดการ Enter เดิมผูกกับ id ของช่องกรอกทีละช่อง และอ้าง data-act="regcheck" ที่ถูกถอดออกแล้ว
+   จึงจะพังเมื่อกด Enter ตัวจัดการรวมที่ผูกกับ .auth-form ด้านล่างครอบคลุมทุกหน้าอยู่แล้ว */
 
 
 /*───────── ตัวช่วยสำหรับตัวแปรพฤติกรรมที่อาจไม่มีในฐานข้อมูล ─────────*/
@@ -5691,7 +6551,7 @@ function featNote(v){ return (v===null||v===undefined) ? "ยังไม่ม�
    21. ชั้นเชื่อมต่อฐานข้อมูลจริง (Google Sheets ผ่าน Google Apps Script)
    --------------------------------------------------------
    ส่วนนี้ทำงานทับข้อมูลจำลองด้านบน เมื่อเชื่อมต่อเซิร์ฟเวอร์ได้
-   จะแทนที่ FW, USERS, RESP, EVIDENCE, PENDING, INVITES, BANK
+   จะแทนที่ FW, USERS, RESP, EVIDENCE, PENDING, BANK
    ด้วยข้อมูลจริงจากชีต และส่งข้อมูลที่ผู้ใช้บันทึกกลับไปยังชีต
    หากเชื่อมต่อไม่ได้ ระบบจะทำงานในโหมดสาธิตเช่นเดิม
    ========================================================== */
@@ -5940,7 +6800,9 @@ function applyFramework(d) {
     return {year: y, label: ys.label, stage: ys.stage, config};
   });
 
-  FW = {levels, competencies: comps, years};
+  /* เก็บเวอร์ชันกรอบสมรรถนะจากเซิร์ฟเวอร์ไว้กำกับเอกสารทุกฉบับ */
+  FW = {levels, competencies: comps, years,
+        version: String(d.version || '—'), updatedAt: String(d.updated_at || '')};
   LIVE.fwLive = true;
   S.fwSel = FW.competencies[0].id;
   S.iqComp = FW.competencies[0].id;
@@ -5971,12 +6833,16 @@ function applyAssessments(sid, d) {
   sc.forEach(s => {
     const a = byAsm[s.assess_id]; if (!a) return;
     const rn = String(a.round_no || 1);
-    const R = rounds[rn] = rounds[rn] || {no: +rn || 1, date: a.assess_date || '', lec: {}, men: {}, self: {}};
+    let R = rounds[rn];
+    if (!R) {
+      R = rounds[rn] = {no: +rn || 1, date: a.assess_date || ''};
+      RATERS.forEach(x => R[x.key] = {});       // กล่องคะแนนของทุกฝ่ายตามนิยามกลาง
+    }
     if (a.assess_date && (!R.date || String(a.assess_date) > String(R.date))) R.date = a.assess_date;
-    const t = String(a.assess_type || '').toLowerCase();
-    const box = t === 'mentor' ? R.men : (t === 'lecturer' ? R.lec : (t === 'self' ? R.self : null));
-    if (!box) return;
+    const rater = raterByType(a.assess_type);   // ประเภทที่ไม่อยู่ในกติกา เช่น peer หรือ director จะถูกข้าม
+    if (!rater) return;
     const v = Number(s.level_score); if (!isFinite(v)) return;
+    const box = R[rater.key];
     const cell = box[s.ind_id] = box[s.ind_id] || {sum: 0, n: 0};
     cell.sum += v; cell.n++;
   });
@@ -5986,22 +6852,51 @@ function applyAssessments(sid, d) {
     return o;
   };
   const list = Object.keys(rounds).map(k => rounds[k]).sort((a, b) => a.no - b.no).map(R => {
-    const lec = flatten(R.lec), men = flatten(R.men), self = flatten(R.self);
+    const out = {no: R.no, label: 'ครั้งที่ ' + R.no, when: R.date || ''};
+    RATERS.forEach(x => out[x.key] = flatten(R[x.key]));
+    /* คะแนนรวมรายตัวชี้วัด ใช้กติกาเดียวกับที่แสดงบนหน้าจอ
+       เฉลี่ยอาจารย์นิเทศก์สองประเภทเข้าด้วยกันก่อน แล้วจึงเฉลี่ยสามฝ่ายที่มีข้อมูล */
+    const ids = new Set();
+    RATERS.forEach(x => Object.keys(out[x.key]).forEach(id => ids.add(id)));
     const resp = {};
-    new Set(Object.keys(lec).concat(Object.keys(men))).forEach(id => {
-      const l = lec[id], m = men[id];
-      const v = (l !== undefined && m !== undefined) ? (l + m) / 2 : (l !== undefined ? l : m);
-      resp[id] = clamp(Math.round(v), 1, FW.levels.length);   // แบบจำลองจิตมิติต้องการหมวดคะแนนแบบจำนวนเต็ม
+    ids.forEach(id => {
+      const groups = SCORE_GROUPS.map(g => {
+        const vals = g.raters.map(k => out[k][id]).filter(x => x !== undefined);
+        return vals.length ? mean(vals) : null;
+      }).filter(x => x !== null);
+      if (!groups.length) return;
+      resp[id] = clamp(Math.round(mean(groups)), 1, FW.levels.length);   // แบบจำลองจิตมิติต้องการหมวดคะแนนแบบจำนวนเต็ม
     });
-    return {no: R.no, label: 'ครั้งที่ ' + R.no, when: R.date || '', resp, lec, men, self};
+    out.resp = resp;
+    /* ชื่อเดิมที่โค้ดบางส่วนยังอ้างถึง */
+    out.men = out.men; out.self = out.slf;
+    return out;
   });
 
-  delete RESP[sid]; delete RESP_L[sid]; delete RESP_M[sid]; delete HIST[sid];
+  delete RESP[sid]; delete HIST[sid]; delete ASSESS_LOG[sid];
+  RATERS.forEach(x => { delete x.store()[sid]; });
   if (list.length) {
     HIST[sid] = list;
     const last = list[list.length - 1];
-    RESP[sid] = last.resp; RESP_L[sid] = last.lec; RESP_M[sid] = last.men;
+    RESP[sid] = last.resp;
+    RATERS.forEach(x => { x.store()[sid] = last[x.key]; });
   }
+
+  /* ระเบียนการประเมินจริงรายครั้ง พร้อมผู้ประเมินและวันที่จากชีต Assessments
+     รายงานความก้าวหน้าและประวัติการประเมินอ่านจากตรงนี้ ไม่ได้สังเคราะห์ขึ้นเอง */
+  const nBy = {};
+  sc.forEach(s => { const k = String(s.assess_id); nBy[k] = (nBy[k] || 0) + 1; });
+  ASSESS_LOG[sid] = asm.filter(a => raterByType(a.assess_type)).map(a => ({
+    assess_id: String(a.assess_id || ''), comp_id: String(a.comp_id || ''),
+    type: String(a.assess_type || '').toLowerCase(),
+    round_no: Number(a.round_no) || 1,
+    date: String(a.assess_date || a.created_at || '').slice(0, 10),
+    assessor_id: String(a.assessor_id || ''), assessor_name: '',
+    assessor_role: String(a.assessor_role || ''),
+    n_items: nBy[String(a.assess_id)] || 0,
+    comment: String(a.comment || ''),
+  }));
+
   LIVE.deep.add(sid);
   return list.length;
 }
@@ -6032,14 +6927,13 @@ async function liveBootLegacy() {
   const grab = async (action, pick) => {
     try { const r = await API.call(action, {}); return pick(r) || []; } catch (e) { return []; }
   };
-  const [framework, users, registrations, invitations, items] = await Promise.all([
+  const [framework, users, registrations, items] = await Promise.all([
     API.call('framework.get', {}).catch(() => null),
     grab('users.list', r => r.users),
-    staff ? grab('reg.list',    r => r.registrations || r.rows) : Promise.resolve([]),
-    staff ? grab('invite.list', r => r.invitations || r.invites || r.rows) : Promise.resolve([]),
-    staff ? grab('item.list',   r => r.items) : Promise.resolve([]),
+    staff ? grab('reg.list',  r => r.registrations || r.rows) : Promise.resolve([]),
+    staff ? grab('item.list', r => r.items) : Promise.resolve([]),
   ]);
-  return {framework, users, registrations, invitations, items, skipped: []};
+  return {framework, users, registrations, items, skipped: []};
 }
 
 async function liveHydrate() {
@@ -6048,7 +6942,7 @@ async function liveHydrate() {
     const me = S.user;
 
     /* 1) ข้อมูลตั้งต้นทั้งหมดในคำขอเดียว
-       เดิมยิงห้าคำขอเรียงกัน (framework.get, users.list, reg.list, invite.list, item.list)
+       เดิมยิงหลายคำขอเรียงกัน (framework.get, users.list, reg.list, item.list)
        Apps Script ตอบแต่ละคำขอหลายวินาที ผู้ใช้จึงต้องรอนานกว่าจะเห็นข้อมูล
        boot.data รวมทุกส่วนไว้ และข้ามส่วนที่ผู้ใช้ไม่มีสิทธิ์ให้เอง */
     let boot = null;
@@ -6075,15 +6969,14 @@ async function liveHydrate() {
 
     /* 3) ล้างข้อมูลจำลองที่ไม่ควรแสดงในโหมดจริง */
     Object.keys(RESP).forEach(k => delete RESP[k]);
-    Object.keys(RESP_L).forEach(k => delete RESP_L[k]);
-    Object.keys(RESP_M).forEach(k => delete RESP_M[k]);
+    RATERS.forEach(x => { const st = x.store(); Object.keys(st).forEach(k => delete st[k]); });
     Object.keys(HIST).forEach(k => delete HIST[k]);
+    Object.keys(ASSESS_LOG).forEach(k => delete ASSESS_LOG[k]);
     LIVE.deep.clear(); LIVE.evLoaded.clear();
-    EVIDENCE = []; PENDING = []; INVITES = [];
+    EVIDENCE = []; PENDING = [];
 
     /* 4) ข้อมูลของผู้ดูแลและผู้บริหาร มาพร้อม boot.data แล้ว */
     PENDING = ((boot && boot.registrations) || []).map(mapReg);
-    INVITES = ((boot && boot.invitations) || []).map(mapInvite);
     const items = (boot && boot.items) || [];
     if (items.length) applyItems(items);
     else if (!LIVE.bankLive) { BANK = buildBank(); bankChanged(); }
@@ -6118,15 +7011,9 @@ function mapReg(r) {
     email: r.email || '', tel: r.phone || '', school: r.school || '', aff: r.affiliation || '',
     program: r.program_id || '', group: r.subject_group || '', teachLevel: r.teach_level || '',
     exp: r.experience_years === '' || r.experience_years == null ? '' : String(r.experience_years),
-    role: r.kind === 'mentor' ? 'Mentor' : (r.role || 'Mentor'),
+    /* บทบาทมาจากคอลัมน์ role ที่ผู้สมัครเลือกเอง เดิมอนุมานจากรหัสเชิญซึ่งเลิกใช้แล้ว */
+    role: String(r.role || '') === 'Director' ? 'Director' : 'Mentor',
     at: String(r.submitted_at || '').slice(0, 10),
-  };
-}
-function mapInvite(v) {
-  return {
-    id: v.invite_id, code: v.code, role: v.role, school: v.school || '',
-    term: v.term_id || LIVE_CFG.term, expires: String(v.expires_at || '').slice(0, 10),
-    used: numOr(v.used, 0), quota: numOr(v.quota, 0),
   };
 }
 
@@ -6238,6 +7125,7 @@ async function liveLogin(email, pw) {
   LIVE.err = '';
   S.err = '';
   S.notice = 'กำลังตรวจสอบบัญชีกับเซิร์ฟเวอร์…';
+  toast("⏳ กำลังตรวจสอบบัญชีกับฐานข้อมูล…","wait",true);
 
   render();
 
@@ -6276,6 +7164,7 @@ async function liveLogin(email, pw) {
     S.notice = r.must_change_password
       ? 'บัญชีนี้ยังใช้รหัสผ่านชั่วคราว กรุณาเปลี่ยนรหัสผ่านที่หน้าโปรไฟล์'
       : '';
+    toast("✅ เข้าสู่ระบบสำเร็จ กำลังโหลดข้อมูลจากฐานข้อมูล…","ok");
 
     /* 5. สำคัญที่สุด:
           แสดง Dashboard ทันที
@@ -6308,6 +7197,7 @@ async function liveLogin(email, pw) {
 
     S.err = (e && e.message) || 'เข้าสู่ระบบไม่สำเร็จ';
     S.notice = '';
+    toastFailed(S.err);
 
     return false;
 
@@ -6419,14 +7309,18 @@ function scheduleItemSave(id) {
 async function livePush(action, params, okMsg, after) {
   if (!liveOn()) return;
   liveBusy(1);
+  toastSaving();                 // แจ้งผู้ใช้ว่ากำลังบันทึก เพราะ Apps Script ตอบช้าหลายวินาที
   try {
     const d = await API.call(action, params);
     if (okMsg) LIVE.info = okMsg;
     LIVE.err = '';
     if (after) await after(d);
+    toastSaved(okMsg);
+    return d;
   } catch (e) {
     liveErr(e);
     LIVE.queue.push({action, params, at: new Date().toISOString()});
+    toastFailed((e && e.message) || '');
   } finally { liveBusy(-1); render(); }
 }
 
@@ -6554,61 +7448,71 @@ document.addEventListener('click', e => {
     livePush('auth.forgot', {email: em}, 'ส่งคำขอตั้งรหัสผ่านใหม่ไปยังเซิร์ฟเวอร์แล้ว');
     return;
   }
-  if (a === 'regcheck') {
-    e.stopPropagation();
-    const code = val('ic'); S.regData.code = code;
-    liveBusy(1); render();
-    API.call('reg.checkInvite', {code})
-      .then(d => { S.regInvite = mapInvite(Object.assign({invite_id: 'IV', used: 0, quota: 1}, d.invite));
-                   S.regData.sch = S.regData.sch || (d.invite && d.invite.school) || '';
-                   S.err = ''; S.regStep = 2; })
-      .catch(x => { S.err = x.message; })
-      .finally(() => { liveBusy(-1); render(); });
-    return;
-  }
-  if (a === 'regsubmit') {
-    e.stopPropagation();
-    const d = S.regData;
-    liveBusy(1); render();
-    API.call('reg.submitMentor', {
-      code: d.code, prefix: d.pre, first_name: d.fn, last_name: d.ln, email: d.em, phone: d.tel,
-      program_id: d.prog, school: d.sch, affiliation: d.aff, subject_group: d.grp,
-      teach_level: d.lvl, experience_years: d.exp,
-      consent_pdpa: true, consent_media: true, consent_truth: true,
-    }).then(r => { S.regRef = r.ref || ''; S.err = ''; S.regStep = 6; })
-      .catch(x => { S.err = x.message; })
-      .finally(() => { liveBusy(-1); render(); });
-    return;
-  }
-  if (a === 'stucheck') {
-    e.stopPropagation();
-    const code = val('s_code'), dob = val('s_dob');
+  /* ขั้นที่ 1 ของนักศึกษา ตรวจรหัสนักศึกษากับทะเบียนจริง
+     ประเภทอื่นไม่ต้องตรวจอะไร ปล่อยให้ตัวจัดการเดิมพาไปขั้นถัดไปได้เลย */
+  if (a === 'regnext1' && S.reg.kind === 'student') {
+    e.stopPropagation(); e.preventDefault();
+    const code = val('rg_code').trim();
+    const em = normEmail(val('rg_em1'));
+    const prog = (document.getElementById('rg_prog1') || {}).value || '';
     if (!code) { S.err = 'กรุณากรอกรหัสนักศึกษา'; render(); return; }
-    if (!dob) { S.err = 'กรุณาระบุวันเดือนปีเกิดเพื่อยืนยันตัวตน'; render(); return; }
-    liveBusy(1); render();
+    if (!em) { S.err = 'กรุณากรอกอีเมลมหาวิทยาลัย'; render(); return; }
+    if (!isStudentEmail(em)) {
+      S.err = `อีเมลต้องเป็นของมหาวิทยาลัย ลงท้ายด้วย @${STUDENT_EMAIL_DOMAIN} เท่านั้น`; render(); return; }
+    if (!prog) { S.err = 'กรุณาเลือกสาขาวิชา'; render(); return; }
+    liveBusy(1);
+    toast('⏳ กำลังตรวจสอบรหัสนักศึกษากับทะเบียน…', 'wait', true);
+    render();
     API.call('reg.checkStudent', {code}).then(d => {
       const f = d.found ? d.student : null;
-      S.stuFound = f ? {id: 'srv', code: f.code, name: [f.first_name, f.last_name].filter(Boolean).join(' '),
-                        program: f.program_id, year: +f.year || 1, email: f.email || '', school: ''} : null;
-      S.stuData = {code, dob, pre: PREFIX_STU[0],
-        fn: f ? f.first_name || '' : '', ln: f ? f.last_name || '' : '',
-        prog: f ? f.program_id : PROGRAMS[0].id, year: f ? +f.year || 1 : 1,
-        em: f ? f.email || '' : '', tel: '', sch: '', term: LIVE_CFG.term, adv: ''};
-      S.stuNotice = d.found ? '' : 'ไม่พบรหัสนี้ในทะเบียน ระบบจะส่งข้อมูลให้เจ้าหน้าที่ตรวจสอบก่อนเปิดใช้งานบัญชี';
-      S.err = ''; S.stuStep = 2;
-    }).catch(x => { S.err = x.message; })
+      S.reg.found = f ? {id: 'srv', code: f.code,
+        name: [f.first_name, f.last_name].filter(Boolean).join(' '),
+        program: f.program_id, year: +f.year || 1, email: f.email || '', school: ''} : null;
+      /* อีเมลและสาขาวิชาใช้ค่าที่ผู้สมัครกรอกไว้เสมอ ไม่ให้ค่าจากทะเบียนเขียนทับ */
+      S.reg.data = {code, em, prog,
+        pre: S.reg.data.pre || PREFIX_STU[0],
+        fn: f ? f.first_name || '' : (S.reg.data.fn || ''),
+        ln: f ? f.last_name || '' : (S.reg.data.ln || ''),
+        year: f ? +f.year || 1 : (S.reg.data.year || 1),
+        tel: S.reg.data.tel || '', sch: S.reg.data.sch || '',
+        c1: S.reg.data.c1, c2: S.reg.data.c2};
+      S.reg.notice = d.found
+        ? 'พบข้อมูลในทะเบียนแล้ว ระบบเติมชื่อและชั้นปีให้อัตโนมัติ'
+        : 'ไม่พบรหัสนี้ในทะเบียน ท่านสมัครต่อได้ เจ้าหน้าที่จะตรวจสอบสถานภาพภายหลัง';
+      toast(d.found ? '✅ ตรวจสอบรหัสนักศึกษาสำเร็จ' : 'ℹ️ ไม่พบรหัสนี้ในทะเบียน สมัครต่อได้', d.found ? 'ok' : 'wait');
+      S.err = ''; S.reg.step = 2;
+    }).catch(x => { S.err = x.message; toastFailed(x.message); })
       .finally(() => { liveBusy(-1); render(); });
     return;
   }
-  if (a === 'stuverify') {
-    e.stopPropagation();
-    const d = S.stuData;
+  /* ขั้นสุดท้าย ส่งข้อมูลจริงขึ้นเซิร์ฟเวอร์
+     นักศึกษาได้บัญชีทันที ส่วนครูพี่เลี้ยงและผู้บริหารเข้าคิวรออนุมัติ */
+  if (a === 'regsubmit') {
+    e.stopPropagation(); e.preventDefault();
+    const d = S.reg.data;
+    const chk = id => !!(document.getElementById(id) || {}).checked;
+    d.c1 = chk('rg_c1'); d.c2 = chk('rg_c2');
+    if (!d.c1 || !d.c2) { S.err = 'กรุณายอมรับเงื่อนไขให้ครบทุกข้อ'; render(); return; }
+    const p1 = val('rg_p1'), p2 = val('rg_p2');
+    if (p1.length < PW_MIN) { S.err = `รหัสผ่านต้องมีความยาวอย่างน้อย ${PW_MIN} อักขระ`; render(); return; }
+    if (p1 !== p2) { S.err = 'รหัสผ่านทั้งสองช่องไม่ตรงกัน'; render(); return; }
+    d.pw = p1;
     liveBusy(1); render();
-    API.call('reg.submitStudent', {
-      code: d.code, prefix: d.pre, first_name: d.fn, last_name: d.ln, email: d.em, phone: d.tel,
-      program_id: d.prog, year: d.year, school: d.sch, password: d.pw, consent_pdpa: true,
-    }).then(() => { S.err = ''; S.stuStep = 6; })
-      .catch(x => { S.err = x.message; })
+    /* คำสั่งเดียวใช้ได้ทุกประเภท และเปิดใช้งานบัญชีให้ทันที ผู้สมัครจึงเข้าสู่ระบบได้เลย */
+    API.call('reg.submit', {
+      kind: S.reg.kind,
+      code: d.code || '', prefix: d.pre, first_name: d.fn, last_name: d.ln,
+      email: d.em, phone: d.tel, password: d.pw,
+      program_id: d.prog, year: S.reg.kind === 'student' ? d.year : '',
+      school: d.sch || '', affiliation: d.aff || '',
+      subject_group: d.grp || '', teach_level: d.lvl || '', experience_years: d.exp || '',
+      consent_pdpa: true, consent_media: true, consent_truth: true
+    }).then(r => {
+      S.reg.ref = (r && r.ref) || '';
+      S.reg.username = (r && r.username) || '';
+      if (r && r.in_registry !== undefined) S.reg.found = r.in_registry ? (S.reg.found || true) : null;
+      S.err = ''; S.reg.step = 4;
+    }).catch(x => { S.err = x.message; })
       .finally(() => { liveBusy(-1); render(); });
     return;
   }
@@ -6618,15 +7522,12 @@ document.addEventListener('click', e => {
     const g = id => { const x = document.getElementById(id); return x ? x.value.trim() : ''; };
     LIVE.intent = {act: a, id: v, data: {
       name: g('uf_name'), code: g('uf_code'), email: g('uf_email'), role: g('uf_role'),
-      program: g('uf_prog'), year: g('uf_year'), school: g('uf_school'), status: g('uf_status')}};
+      program: g('uf_prog'), year: g('uf_year'), school: g('uf_school'), status: g('uf_status'),
+      password: (document.getElementById('uf_pw') || {}).value || ''}};
   } else if (a === 'usrdel' || a === 'usrtoggle' || a === 'appok' || a === 'apprej') {
     const u = a === 'appok' || a === 'apprej' ? null : userById(v);
     LIVE.intent = {act: a, id: v, before: u ? {status: u.status} : null,
                    reg: (PENDING.find(x => x.id === v) || null)};
-  } else if (a === 'ivadd') {
-    LIVE.intent = {act: a, data: {school: val('iv_school'),
-      role: (document.getElementById('iv_role') || {}).value || 'Mentor',
-      quota: +val('iv_quota') || 5}};
   } else if (a === 'evadd') {
     LIVE.intent = {act: a, data: {title: val('ev_title'), type: S.evNew.type, comps: [...S.evNew.comps],
       mode: S.evNew.mode, link: String(S.evNew.link || '').trim(),
@@ -6661,9 +7562,28 @@ document.addEventListener('click', e => {
         last_name: String(d.name).split(' ').slice(1).join(' '), code: d.code, email: d.email,
         role: d.role, program_id: d.program || '', year: d.year || '', school: d.school || '',
         status: d.status};
-      if (it.id) livePush('users.update', Object.assign({user_id: it.id}, body), 'บันทึกบัญชีไปยังฐานข้อมูลแล้ว');
-      else livePush('users.create', body, 'สร้างบัญชีในฐานข้อมูลแล้ว รหัสผ่านชั่วคราวถูกส่งทางอีเมล',
-        async () => { try { const r = await API.call('users.list', {}); USERS = (r.users || []).map(mapUser); } catch (x) {} });
+      const reload = async () => {
+        try { const r = await API.call('users.list', {}); USERS = (r.users || []).map(mapUser); } catch (x) {}
+      };
+      if (it.id) {
+        livePush('users.update', Object.assign({user_id: it.id}, body), 'บันทึกบัญชีไปยังฐานข้อมูลแล้ว',
+          async () => {
+            /* รหัสผ่านแก้ผ่าน users.update ไม่ได้โดยเจตนา จึงต้องเรียก users.setPassword แยก */
+            if (d.password) await livePush('users.setPassword', {user_id: it.id, password: d.password},
+              'ตั้งรหัสผ่านใหม่ให้บัญชีนี้แล้ว');
+            await reload();
+          });
+      } else {
+        livePush('users.create', Object.assign({password: d.password || ''}, body), '',
+          async r => {
+            /* รหัสผ่านชั่วคราวที่ระบบสุ่มให้ ต้องแสดงให้ผู้ดูแลเห็นด้วย
+               เผื่อกรณีส่งอีเมลไม่สำเร็จ ผู้ดูแลจะได้แจ้งเจ้าของบัญชีโดยตรง */
+            LIVE.info = (r && r.temp_password)
+              ? `สร้างบัญชีแล้ว ชื่อผู้ใช้ ${r.username || d.email} · รหัสผ่านชั่วคราว ${r.temp_password} (กรุณาคัดลอกเก็บไว้ ระบบจะไม่แสดงอีก)`
+              : `สร้างบัญชีในฐานข้อมูลแล้ว เข้าสู่ระบบด้วยชื่อผู้ใช้ ${(r && r.username) || d.code || d.email} และรหัสผ่านที่ท่านตั้งไว้`;
+            await reload();
+          });
+      }
       break;
     }
     case 'usrtoggle': {
@@ -6681,12 +7601,6 @@ document.addEventListener('click', e => {
       break;
     case 'apprej':
       livePush('reg.reject', {reg_id: it.id, reason: ''}, 'บันทึกการปฏิเสธคำขอในฐานข้อมูลแล้ว');
-      break;
-    case 'ivadd':
-      livePush('invite.create', {role: d.role, school: d.school, quota: d.quota, term_id: LIVE_CFG.term},
-        'สร้างรหัสเชิญในฐานข้อมูลแล้ว',
-        async () => { try { const r = await API.call('invite.list', {});
-                            INVITES = (r.invitations || r.invites || r.rows || []).map(mapInvite); } catch (x) {} });
       break;
     case 'evadd':
       /* มีไฟล์แนบให้ส่งขึ้น Google Drive ก่อน แล้วจึงผูก URL ไว้กับรายการหลักฐาน */
