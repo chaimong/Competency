@@ -3500,12 +3500,15 @@ function examPage(){
     if(S.examDone){
       const res=EXAM_RESULTS.filter(r=>r.sid===me.id&&r.comp===c.id).slice(-1)[0];
       if(!res) return card("ผลการทดสอบ","",`<div class="empty">ไม่พบผลการทดสอบ</div>`);
-      const R=iqIRT(c.id);
+      const itemResults=Array.isArray(res.itemResults)?res.itemResults:[];
+      const pct=res.n?Number(res.correct)/Number(res.n)*100:0;
+      const levelObj=FW.levels[clamp(Number(res.level)||1,1,FW.levels.length)-1]||{};
       return `<div class="stack">
-        ${card("ผลการทดสอบ",`${c.code} · ${esc(c.th)}`,
-          `<div class="grid g4">${stat("คะแนน",`${res.correct} / ${res.n}`,`คิดเป็น ${(res.correct/res.n*100).toFixed(0)}%`)}${stat("ค่าความสามารถ θ",fmt(res.theta),`ความคลาดเคลื่อน ${fmt(res.se)}`)}${stat("ระดับสมรรถนะ","ระดับที่ "+res.level,FW.levels[res.level-1].th)}${stat("เป้าหมายชั้นปี",cfgOf(FW,y,c.id).target,res.level>=cfgOf(FW,y,c.id).target?"ถึงเป้าหมาย":"ยังไม่ถึงเป้าหมาย")}</div>
-          <div class="notebox" style="margin-top:.9rem">${res.dbSaved?"บันทึกผลการทดสอบลงฐานข้อมูลเรียบร้อยแล้ว":"ยังไม่ได้ยืนยันการบันทึกฐานข้อมูล"}</div>`)}
-        ${card("ผลรายข้อ","",`<div class="scroll-x"><table class="tight" style="min-width:640px"><thead><tr><th>ข้อ</th><th>คำตอบของท่าน</th><th>เฉลย</th><th>ผล</th><th class="num">ความยาก b</th></tr></thead><tbody>${items.map((it,k)=>{const ans=res.ans[it.id],ok=ans===it.key,j=R.items.findIndex(x=>x.id===it.id);return `<tr><td>${k+1}</td><td>${ans===undefined?"ไม่ได้ตอบ":CHOICE_LB[ans]}</td><td>${CHOICE_LB[it.key]}</td><td><span class="tag ${ok?"tag-ok":"tag-risk"}">${ok?"ถูก":"ผิด"}</span></td><td class="num">${j>=0?R.b[j].toFixed(2):"—"}</td></tr>`;}).join("")}</tbody></table></div>` ,"",false)}
+        ${card("ผลการทดสอบล่าสุด",`${c.code} · ${esc(c.th)}`,
+          `<div class="grid g4">${stat("คะแนน",`${Number(res.correct)||0} / ${Number(res.n)||0}`,`คิดเป็น ${Number(res.percent!=null?res.percent:pct).toFixed(2)}%`)}${stat("ค่าความสามารถ θ",fmt(res.theta),`ความคลาดเคลื่อน ${fmt(res.se)}`)}${stat("ระดับสมรรถนะ","ระดับที่ "+(Number(res.level)||1),esc(levelObj.th||""))}${stat("เวลาส่งผล",res.at?String(res.at).replace('T',' '):'—')}</div>
+          <div class="notebox" style="margin-top:.9rem">คะแนน, ค่า θ, SE และระดับสมรรถนะในหน้านี้เป็นค่าที่ประมวลผลและบันทึกจาก Server ของการสอบครั้งล่าสุด (Attempt: ${esc(res.attempt_id||'—')})</div>`)}
+        ${card("ผลรายข้อ","ตรวจจากคำตอบที่บันทึกใน ExamAnswers เทียบกับเฉลยใน ItemBank",
+          `<div class="scroll-x"><table class="tight" style="min-width:780px"><thead><tr><th>ข้อ</th><th>คำตอบของท่าน</th><th>เฉลย</th><th>ผล</th><th class="num">a</th><th class="num">b</th></tr></thead><tbody>${itemResults.length?itemResults.map((r,k)=>{const ans=r.chosen,key=r.answer_key,ok=!!r.is_correct;return `<tr><td>${k+1}</td><td>${ans?CHOICE_LB['ABCDE'.indexOf(ans)]||ans:"ไม่ได้ตอบ"}</td><td>${key?CHOICE_LB['ABCDE'.indexOf(key)]||key:"—"}</td><td><span class="tag ${ok?"tag-ok":"tag-risk"}">${ok?"ถูก":"ผิด"}</span></td><td class="num">${Number(r.true_a||1).toFixed(2)}</td><td class="num">${Number(r.true_b||0).toFixed(2)}</td></tr>`}).join(""):`<tr><td colspan="6" class="empty">ไม่พบรายละเอียดคำตอบรายข้อของการสอบครั้งนี้</td></tr>`}</tbody></table></div>` ,"",false)}
         <div class="row"><button class="btn btn-ghost btn-sm" data-act="examexit">กลับไปหน้ารายการแบบทดสอบ</button></div></div>`;
     }
     const q=clamp(Number(S.examQ)||0,0,items.length-1); S.examQ=q;
@@ -5858,7 +5861,7 @@ async function liveExamResults(sid){
         sid:sid, comp:cid, year:Number(a.year || (userById(sid)||{}).year || 0),
         correct:Number(a.n_correct || 0), n:Number(a.n_items || 0),
         theta:Number(a.theta || 0), se:Number(a.se || 0), level:Number(a.level || 1),
-        ans:existing.ans || {}, at:a.submitted_at || a.created_at || '',
+        ans:existing.ans || {}, itemResults:Array.isArray(a.item_results)?a.item_results:[], percent:Number(a.percent||0), at:a.submitted_at || a.created_at || '',
         dbSaved:true, attempt_id:a.attempt_id || ''
       }]);
     });
