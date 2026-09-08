@@ -727,11 +727,11 @@ function seedResponsesFor(u){
 students().forEach(seedResponsesFor);
 
 let EVIDENCE=[
-  {id:"e1",title:"แผนการจัดการเรียนรู้ เรื่อง ระบบสุริยะ",type:"Lesson Plan",date:"2026-07-12",comps:["C10","C13"],status:"verified"},
-  {id:"e2",title:"คลิปการสอนคาบที่ 4 ชั้น ม.2/1",type:"Video Teaching",date:"2026-07-19",comps:["C03","C06"],status:"verified"},
-  {id:"e3",title:"บันทึกสะท้อนคิดสัปดาห์ที่ 6",type:"Reflection",date:"2026-07-26",comps:["C17"],status:"pending"},
-  {id:"e4",title:"รายงานวิจัยในชั้นเรียน ฉบับร่าง",type:"Research",date:"2026-08-09",comps:["C11","C16"],status:"pending"},
-  {id:"e5",title:"บันทึกกิจกรรม PLC กลุ่มสาระวิทยาศาสตร์",type:"PLC",date:"2026-08-16",comps:["C04","C02"],status:"verified"}];
+  {id:"e1",student:"s1",title:"แผนการจัดการเรียนรู้ เรื่อง ระบบสุริยะ",type:"Lesson Plan",date:"2026-07-12",comps:["C10","C13"],status:"verified"},
+  {id:"e2",student:"s1",title:"คลิปการสอนคาบที่ 4 ชั้น ม.2/1",type:"Video Teaching",date:"2026-07-19",comps:["C03","C06"],status:"verified"},
+  {id:"e3",student:"s1",title:"บันทึกสะท้อนคิดสัปดาห์ที่ 6",type:"Reflection",date:"2026-07-26",comps:["C17"],status:"pending"},
+  {id:"e4",student:"s1",title:"รายงานวิจัยในชั้นเรียน ฉบับร่าง",type:"Research",date:"2026-08-09",comps:["C11","C16"],status:"pending"},
+  {id:"e5",student:"s1",title:"บันทึกกิจกรรม PLC กลุ่มสาระวิทยาศาสตร์",type:"PLC",date:"2026-08-16",comps:["C04","C02"],status:"verified"}];
 
 let PENDING=[
   {id:"p1",name:"ครูวราภรณ์ ทองดี",email:"waraporn@lp.ac.th",tel:"0819112233",school:SCHOOLS[0],aff:"สพฐ.",
@@ -1010,17 +1010,22 @@ const S={
   msg:"", err:"", notice:"",
   regStep:1, regInvite:null, regData:{}, regRef:"", forgotSent:false, otpUser:null,
   stuStep:1, stuData:{}, stuFound:null, stuNotice:"",
-  evNew:{title:"",type:"Lesson Plan",comps:[]},
+  evNew:{title:"",type:"Lesson Plan",comps:[],fileName:"",fileMime:"",fileData:""},
+  evSid:null, evErr:"",
 };
 
 const NAV={
   Administrator:["dashboard","users","invitations","approvals","framework","itemq","psychometrics","edm","xai","irr","progress","diagnostic","reports"],
   Dean:["dashboard","analytics","progress","diagnostic","reports"],
-  "Program Chair":["dashboard","users","students","approvals","invitations","analytics","progress","diagnostic","reports"],
-  Lecturer:["dashboard","profile","students","assess","analytics","progress","diagnostic"],
-  Mentor:["dashboard","profile","students","assess","progress"],
+  "Program Chair":["dashboard","users","students","approvals","invitations","analytics","portfolio","progress","diagnostic","reports"],
+  Lecturer:["dashboard","profile","students","assess","analytics","portfolio","progress","diagnostic"],
+  Mentor:["dashboard","profile","students","assess","portfolio","progress"],
+  Director:["dashboard","profile","students","assess","portfolio","progress"],
   Student:["dashboard","profile","exam","progress","myladder","portfolio","assess","diagnostic"],
 };
+/* บทบาทที่มีสิทธิ์ตรวจสอบหลักฐานในแฟ้มสะสมงาน ต้องตรงกับ api_evidenceVerify ใน Code.gs */
+const EV_VERIFIERS=["Lecturer","Mentor","Program Chair","Administrator"];
+const canVerifyEvidence=()=>EV_VERIFIERS.includes(S.role);
 const NAV_LABEL={dashboard:"หน้าหลัก",users:"ผู้ใช้งานและกลุ่ม",invitations:"รหัสเชิญ",approvals:"คำขอสมัคร",
   framework:"กรอบสมรรถนะรายชั้นปี",psychometrics:"โมเดลวัดผล",assess:"การประเมิน",students:"นักศึกษา",
   portfolio:"แฟ้มสะสมงาน",myladder:"พัฒนาการของฉัน",analytics:"วิเคราะห์ภาพรวม",
@@ -2264,23 +2269,57 @@ function studentDash(){
   const ov=valid.length?mean(valid):null;
   const onT=comps.filter((c,i)=>sc[i]!==null&&sc[i]>=cfgOf(FW,y,c.id).target).length;
   const radar=comps.map((c,i)=>({name:c.code.replace("PC-",""),v:sc[i]||0,full:c.th}));
+  const myEv=EVIDENCE.filter(e=>!e.student||e.student===me.id);
+
+  /* สมรรถนะที่ยังไม่ถึงระดับเป้าหมาย เรียงจากที่ห่างมากที่สุด ใช้เป็นรายการสิ่งที่ต้องทำจริง */
+  const behind=comps.map((c,i)=>({c,v:sc[i],t:cfgOf(FW,y,c.id).target}))
+    .filter(x=>x.v!==null&&x.v<x.t).sort((a,b)=>(a.v-a.t)-(b.v-b.t));
+
+  /* แบบทดสอบที่เปิดให้ชั้นปีนี้ และผลล่าสุดของแต่ละสมรรถนะ */
+  const openTests=comps.filter(c=>(cfgOf(FW,y,c.id).test||{open:true}).open!==false);
+  const doneTest=cid=>EXAM_RESULTS.filter(r=>r.sid===me.id&&r.comp===cid).slice(-1)[0];
+  const nDone=openTests.filter(c=>doneTest(c.id)).length;
+  const todoTest=openTests.filter(c=>!doneTest(c.id));
+
+  /* พัฒนาการจากรอบการประเมินที่บันทึกไว้จริง */
+  const rounds=HIST[me.id]||[];
+  const roundAvg=rounds.map(r=>{
+    const v=comps.map(c=>compScoreAvg(FW,me.id,c,y,r).v).filter(x=>x!==null);
+    return {label:r.label,when:r.when||"",v:v.length?mean(v):null};
+  }).filter(x=>x.v!==null);
+  const gain=roundAvg.length>1?roundAvg[roundAvg.length-1].v-roundAvg[0].v:null;
+
+  const progressBody=roundAvg.length
+    ? `<table class="tight"><thead><tr><th>รอบการประเมิน</th><th class="num">คะแนนเฉลี่ย</th><th>ระดับ</th></tr></thead><tbody>
+        ${roundAvg.map(r=>`<tr><td>${esc(r.label)}${r.when?`<div class="sub">${esc(r.when)}</div>`:""}</td>
+          <td class="num">${fmt(r.v)}</td><td>${levelChip(r.v)}</td></tr>`).join("")}</tbody></table>
+       ${gain===null?"":`<div class="notebox" style="margin-top:.7rem">เทียบรอบแรกกับรอบล่าสุด
+         <b style="color:${gain>0.05?"var(--ok)":gain<-0.05?"var(--risk)":"var(--muted)"}">
+         ${gain>=0?"+":""}${gain.toFixed(2)}</b> ระดับ</div>`}`
+    : `<div class="empty">ยังไม่มีผลการประเมินที่บันทึกไว้</div>`;
+
+  const todoRows=[
+    ...behind.slice(0,4).map(x=>`<tr><td>ยกระดับ ${esc(x.c.th)}<div class="sub">ปัจจุบัน ${fmt(x.v)} · เป้าหมาย ${x.t}</div></td>
+      <td class="num"><span class="tag tag-warn">ต่ำกว่าเป้าหมาย</span></td></tr>`),
+    ...(todoTest.length?[`<tr><td>ทำแบบทดสอบวัดสมรรถนะที่ยังค้าง<div class="sub">เหลือ ${todoTest.length} จาก ${openTests.length} ชุด</div></td>
+      <td class="num"><button class="btn btn-primary btn-sm" data-act="gotoexam" data-v="${todoTest[0].id}">เริ่มทำ</button></td></tr>`]:[]),
+    ...(myEv.filter(e=>String(e.status||"pending")==="pending").length
+      ? [`<tr><td>ติดตามหลักฐานที่รอการตรวจสอบ<div class="sub">${myEv.filter(e=>String(e.status||"pending")==="pending").length} รายการ</div></td>
+          <td class="num"><button class="btn btn-ghost btn-sm" data-act="nav" data-v="portfolio">เปิดแฟ้ม</button></td></tr>`]:[]),
+  ].join("");
+
   return `<div class="stack">${pfHead(me)}
     <div class="grid g4">${stat("ระดับสมรรถนะโดยรวม",fmt(ov),ov?levelOf(FW,ov).th:"ยังไม่มีข้อมูล")}
       ${stat("ถึงระดับเป้าหมาย",`${onT} / ${comps.length}`,`เกณฑ์ของ${yearOf(FW,y).label}`)}
-      ${stat("หลักฐานในแฟ้มสะสมงาน",EVIDENCE.length,`รอตรวจสอบ ${EVIDENCE.filter(e=>e.status==="pending").length} รายการ`)}
-      ${stat("งานที่ต้องส่ง","2","ครบกำหนด 12 กันยายน")}</div>
+      ${stat("หลักฐานในแฟ้มสะสมงาน",myEv.length,`รอตรวจสอบ ${myEv.filter(e=>String(e.status||"pending")==="pending").length} รายการ`)}
+      ${stat("แบบทดสอบที่ทำแล้ว",`${nDone} / ${openTests.length}`,todoTest.length?`เหลืออีก ${todoTest.length} ชุด`:"ครบทุกชุดแล้ว")}</div>
     <div class="grid g2">
       ${card("สมรรถนะรายด้าน","ตัวเลขคือลำดับสมรรถนะตามกรอบ PTRU",radarSVG(radar,5))}
       <div class="stack">
-        ${card("ข้อเสนอแนะล่าสุด","จากอาจารย์นิเทศก์และครูพี่เลี้ยง",
-          `<div class="stack" style="gap:.8rem"><div><div class="sub">อ.ดร. ปิยะนุช แสงทอง · 28 ส.ค. 2569</div>
-          <p style="font-size:.88rem;margin-top:.2rem">การออกแบบกิจกรรมสอดคล้องกับจุดประสงค์ดีมาก ควรเพิ่มการวัดผลระหว่างเรียนให้ชัดเจนขึ้น</p></div>
-          <div style="border-top:1px solid var(--line-soft);padding-top:.8rem"><div class="sub">ครูสมชาย ภูมิใจ · 22 ส.ค. 2569</div>
-          <p style="font-size:.88rem;margin-top:.2rem">ควบคุมชั้นเรียนได้ดีขึ้นชัดเจน ลองใช้คำถามปลายเปิดให้มากขึ้นในช่วงสรุปบทเรียน</p></div></div>`)}
-        ${card("สิ่งที่ต้องทำ","",`<table><tbody>
-          <tr><td>ส่งบันทึกสะท้อนคิดสัปดาห์ที่ 10</td><td class="num"><span class="tag tag-warn">ครบ 12 ก.ย.</span></td></tr>
-          <tr><td>ประเมินตนเอง ครั้งที่ 2</td><td class="num"><span class="tag tag-warn">ครบ 15 ก.ย.</span></td></tr>
-          <tr><td>อัปโหลดคลิปการสอนคาบที่ 8</td><td class="num"><span class="tag tag-n">ครบ 30 ก.ย.</span></td></tr></tbody></table>`,"",false)}
+        ${card("พัฒนาการรายรอบ","คะแนนเฉลี่ยจากอาจารย์นิเทศก์และครูพี่เลี้ยงรวมกัน",progressBody,"",false)}
+        ${card("สิ่งที่ต้องทำ","สร้างจากผลการประเมินและสถานะจริงของบัญชีท่าน",
+          todoRows?`<table><tbody>${todoRows}</tbody></table>`
+                 :`<div class="empty">ไม่มีรายการค้าง ทุกสมรรถนะถึงระดับเป้าหมายแล้ว</div>`,"",false)}
       </div></div></div>`;
 }
 function lecturerDash(){
@@ -2443,7 +2482,13 @@ function assessPage(){
   const c=comps.find(x=>x.id===S.asComp), cfg=cfgOf(FW,y,c.id);
   const done=cfg.indicators.length>0&&cfg.indicators.every(i=>S.asScores[i.id]);
   const result=done?mean(cfg.indicators.map(i=>S.asScores[i.id])):null;
-  const typeOpts=ASSESS_TYPES.filter(([id])=>S.role==="Student"?["self","peer"].includes(id):S.role==="Mentor"?id==="mentor":true)
+  /* ประเภทการประเมินที่แต่ละบทบาทเลือกได้ ต้องสอดคล้องกับ api_assessSubmit ใน Code.gs */
+  const allowType=id=>S.role==="Student"?["self","peer"].includes(id)
+    :S.role==="Mentor"?id==="mentor"
+    :S.role==="Director"?id==="director"
+    :S.role==="Lecturer"?id==="lecturer":true;
+  if(!allowType(S.asType)) S.asType=ASSESS_TYPES.map(([id])=>id).find(allowType)||"lecturer";
+  const typeOpts=ASSESS_TYPES.filter(([id])=>allowType(id))
     .map(([id,l])=>`<option value="${id}" ${S.asType===id?"selected":""}>${l}</option>`).join("");
   const indCards=cfg.indicators.length?cfg.indicators.map((i,n)=>card(esc(i.th),`ตัวชี้วัดที่ ${n+1} จาก ${cfg.indicators.length}`,
     `<div class="scale-grid" style="grid-template-columns:repeat(${FW.levels.length},1fr)">
@@ -2477,29 +2522,76 @@ function assessPage(){
         <p class="note">เป็นข้อเสนอแนะประกอบการพิจารณาเท่านั้น ผู้ประเมินเป็นผู้ตัดสินคะแนน</p></div>
     </div></div>`;
 }
-function portfolioPage(){
-  const list=EVIDENCE.map(e=>`<div class="evidence">
+/** นักศึกษาเจ้าของแฟ้มสะสมงานที่กำลังเปิดอยู่
+    นักศึกษาดูของตนเองเสมอ ส่วนผู้ตรวจสอบเลือกจากรายชื่อในขอบเขตของตน */
+function evidenceOwner(){
+  if(S.role==="Student") return myUser().id;
+  const stu=visStudents();
+  if(!stu.length) return null;
+  if(!S.evSid||!stu.some(s=>s.id===S.evSid)) S.evSid=stu[0].id;
+  return S.evSid;
+}
+function evidenceCard(e,canVerify){
+  const st=String(e.status||"pending");
+  const tag=st==="verified"?`<span class="tag tag-ok">ตรวจสอบแล้ว</span>`
+          :st==="rejected"?`<span class="tag tag-risk">ไม่ผ่าน</span>`
+          :`<span class="tag tag-warn">รอตรวจสอบ</span>`;
+  const link=e.url?`<a href="${esc(e.url)}" target="_blank" rel="noopener" style="font-size:.8rem">เปิดไฟล์แนบ</a>`:"";
+  const act=canVerify?`<div class="row" style="margin-top:.6rem;gap:.35rem">
+      <button class="btn btn-ghost btn-sm" data-act="evreject" data-v="${e.id}">ตีกลับให้แก้ไข</button>
+      <button class="btn btn-primary btn-sm" data-act="evverify" data-v="${e.id}">ผ่านการตรวจสอบ</button></div>`:"";
+  return `<div class="evidence">
     <div style="display:flex;justify-content:space-between;gap:1rem">
-      <div><div style="font-weight:500;font-size:.9rem">${esc(e.title)}</div><div class="sub">${e.type} · อัปโหลด ${e.date}</div></div>
-      <span class="tag ${e.status==="verified"?"tag-ok":"tag-warn"}">${e.status==="verified"?"ตรวจสอบแล้ว":"รอตรวจสอบ"}</span></div>
-    <div style="margin-top:.5rem;display:flex;gap:.3rem;flex-wrap:wrap">${e.comps.map(id=>{
-      const c=FW.competencies.find(x=>x.id===id); return c?`<span class="tag tag-n">${c.code} ${esc(c.th)}</span>`:"";}).join("")}</div></div>`).join("");
+      <div><div style="font-weight:500;font-size:.9rem">${esc(e.title)}</div>
+        <div class="sub">${esc(e.type)} · อัปโหลด ${esc(e.date||"—")}</div>${link}</div>
+      ${tag}</div>
+    <div style="margin-top:.5rem;display:flex;gap:.3rem;flex-wrap:wrap">${(e.comps||[]).map(id=>{
+      const c=FW.competencies.find(x=>x.id===id); return c?`<span class="tag tag-n">${c.code} ${esc(c.th)}</span>`:"";}).join("")}</div>
+    ${act}</div>`;
+}
+function portfolioPage(){
+  const sid=evidenceOwner();
+  if(!sid) return card("แฟ้มสะสมงาน","",`<div class="empty">ยังไม่มีนักศึกษาในขอบเขตของท่าน</div>`);
+  const isOwner=S.role==="Student";
+  const canVerify=canVerifyEvidence();
+  /* โหมดเชื่อมต่อจริง ดึงแฟ้มของนักศึกษาที่เลือกไว้ให้อัตโนมัติครั้งแรก แล้ววาดหน้าใหม่เมื่อได้ข้อมูล */
+  if(typeof liveOn==="function"&&liveOn()&&!LIVE.evLoaded.has(sid)) liveEvidence(sid,false).then(render);
+  /* ข้อมูลจากเซิร์ฟเวอร์มีรหัสนักศึกษากำกับ ส่วนข้อมูลจำลองรุ่นเก่าอาจไม่มี จึงยอมรับทั้งสองแบบ */
+  const rows=EVIDENCE.filter(e=>!e.student||e.student===sid);
+  const nPending=rows.filter(e=>String(e.status||"pending")==="pending").length;
+  const list=rows.length?rows.map(e=>evidenceCard(e,canVerify&&String(e.status||"pending")==="pending")).join("")
+    :`<div class="empty">ยังไม่มีหลักฐานในแฟ้มสะสมงานนี้</div>`;
+  const picker=isOwner?"":`<div class="field" style="margin-top:0"><label>นักศึกษา</label>
+    <select class="inp" data-act="evsid">${visStudents().map(s=>`<option value="${s.id}" ${s.id===sid?"selected":""}>${s.program} ปี ${s.year} · ${esc(s.name)}</option>`).join("")}</select></div>`;
   const chips=FW.competencies.map(c=>`<button class="tag ${S.evNew.comps.includes(c.id)?"tag-a":"tag-n"}" title="${esc(c.th)}" data-act="evcomp" data-v="${c.id}">${c.code}</button>`).join("");
-  return `<div class="grid g2" style="grid-template-columns:1.5fr 1fr;align-items:start">
-    ${card("แฟ้มสะสมงานดิจิทัล",`${EVIDENCE.length} รายการ · หลักฐานหนึ่งชิ้นผูกได้หลายสมรรถนะ`,`<div class="stack" style="gap:.7rem">${list}</div>`)}
-    <div class="stack">
-      ${card("เพิ่มหลักฐานใหม่","",
+  const fileNote=S.evNew.fileName
+    ? `<div class="hint" style="color:var(--ok)">แนบไฟล์แล้ว: ${esc(S.evNew.fileName)}</div>`
+    : `<div class="hint">รองรับ PDF, DOCX, MP4 ขนาดไม่เกิน 10 เมกะไบต์ ตามขีดจำกัดของ api_fileUpload</div>`;
+  const addPanel=isOwner?`${card("เพิ่มหลักฐานใหม่","",
         `<div class="field" style="margin-top:0"><label>ชื่อหลักฐาน</label><input class="inp" id="ev_title" value="${esc(S.evNew.title)}" data-act="evtitle" data-nore></div>
          <div class="field"><label>ประเภท</label><select class="inp" data-act="evtype">
            ${["Lesson Plan","Video Teaching","Reflection","Research","Innovation","PLC","Classroom Observation","Certificate","Photo"]
              .map(t=>`<option ${S.evNew.type===t?"selected":""}>${t}</option>`).join("")}</select></div>
          <div class="field"><label>ผูกกับสมรรถนะ</label><div class="row" style="margin-top:.2rem">${chips}</div>
            <div class="hint">${S.evNew.comps.length?S.evNew.comps.map(id=>esc(FW.competencies.find(c=>c.id===id).th)).join(" · "):"เลือกอย่างน้อยหนึ่งสมรรถนะ"}</div></div>
-         <div class="field"><label>ไฟล์</label><input class="inp" type="file"><div class="hint">รองรับ PDF, DOCX, MP4 ขนาดไม่เกิน 500 MB</div></div>
+         <div class="field"><label>ไฟล์</label><input class="inp" id="ev_file" type="file" data-act="evfile" data-nore>${fileNote}</div>
+         ${S.evErr?`<div class="alert alert-err">${esc(S.evErr)}</div>`:""}
          <button class="btn btn-primary" data-act="evadd">เพิ่มเข้าแฟ้มสะสมงาน</button>`)}
       <div class="aibox"><div class="lb">ข้อควรทราบเรื่องวิดีโอการสอน</div>
-        <p>คลิปที่ปรากฏภาพนักเรียนต้องได้รับความยินยอมจากโรงเรียนและผู้ปกครองก่อนอัปโหลด</p></div>
-    </div></div>`;
+        <p>คลิปที่ปรากฏภาพนักเรียนต้องได้รับความยินยอมจากโรงเรียนและผู้ปกครองก่อนอัปโหลด</p></div>`
+    :`${card("การตรวจสอบหลักฐาน",canVerify?"กดผ่านหรือตีกลับได้ทีละรายการ ผลจะบันทึกลงชีต Evidence ทันที":"บทบาทของท่านดูได้อย่างเดียว",
+        `<table class="tight"><tbody>
+          <tr><td>รายการทั้งหมด</td><td class="num">${rows.length}</td></tr>
+          <tr><td>รอตรวจสอบ</td><td class="num" style="font-weight:600;color:${nPending?"var(--warn)":"var(--muted)"}">${nPending}</td></tr>
+          <tr><td>ผ่านการตรวจสอบ</td><td class="num">${rows.filter(e=>e.status==="verified").length}</td></tr>
+          <tr><td>ตีกลับให้แก้ไข</td><td class="num">${rows.filter(e=>e.status==="rejected").length}</td></tr>
+        </tbody></table>`,"",false)}
+      <div class="notebox">ความครบถ้วนของแฟ้มสะสมงานถูกใช้เป็นตัวแปรหนึ่งในแบบจำลองทำนายความเสี่ยง
+        การตรวจสอบให้เป็นปัจจุบันจึงทำให้ผลวิเคราะห์แม่นยำขึ้น</div>`;
+  return `<div class="grid g2" style="grid-template-columns:1.5fr 1fr;align-items:start">
+    ${card("แฟ้มสะสมงานดิจิทัล",`${rows.length} รายการ · หลักฐานหนึ่งชิ้นผูกได้หลายสมรรถนะ`,
+      `${picker}<div class="stack" style="gap:.7rem;margin-top:${isOwner?"0":".8rem"}">${list}</div>`)}
+    <div class="stack">${addPanel}</div></div>`;
 }
 function approvalsPage(){
   const pg=scopeProgram();
@@ -4891,7 +4983,8 @@ function shellView(){
   const ro=!canYear;
   switch(cur){
     case "dashboard":
-      body = S.role==="Student"?studentDash():(S.role==="Lecturer"||S.role==="Mentor")?lecturerDash()
+      body = S.role==="Student"?studentDash()
+           :(S.role==="Lecturer"||S.role==="Mentor"||S.role==="Director")?lecturerDash()
            :(S.role==="Dean"||S.role==="Program Chair")?execDash():adminDash(); break;
     case "users": body=usersPage(); break;
     case "invitations": body=invitationsPage(); break;
@@ -5309,9 +5402,15 @@ document.addEventListener("click",e=>{
     case "evcomp": { const i=S.evNew.comps.indexOf(v);
       if(i<0) S.evNew.comps.push(v); else S.evNew.comps.splice(i,1); break; }
     case "evadd": { const t=val("ev_title");
-      if(!t||!S.evNew.comps.length) break;
-      EVIDENCE.unshift({id:nid("e"),title:t,type:S.evNew.type,date:"2026-09-03",comps:[...S.evNew.comps],status:"pending"});
-      S.evNew={title:"",type:S.evNew.type,comps:[]}; break; }
+      if(!t){ S.evErr="กรุณาระบุชื่อหลักฐาน"; break; }
+      if(!S.evNew.comps.length){ S.evErr="กรุณาเลือกสมรรถนะอย่างน้อยหนึ่งรายการ"; break; }
+      S.evErr="";
+      EVIDENCE.unshift({id:nid("e"),student:myUser().id,title:t,type:S.evNew.type,
+        date:new Date().toISOString().slice(0,10),comps:[...S.evNew.comps],status:"pending",url:""});
+      S.evNew={title:"",type:S.evNew.type,comps:[],fileName:"",fileMime:"",fileData:""}; break; }
+    case "evverify": case "evreject": {
+      const e2=EVIDENCE.find(x=>x.id===v); if(!e2){ re=false; break; }
+      e2.status=(a==="evverify")?"verified":"rejected"; break; }
 
     case "noop": alert("ต้นแบบนี้ยังไม่ได้เชื่อมต่อบริการสร้างไฟล์ ฟังก์ชันนี้ต้องพัฒนาในฝั่งเซิร์ฟเวอร์"); re=false; break;
     default: re=false;
@@ -5361,6 +5460,18 @@ document.addEventListener("change",e=>{
     case "ascomp": S.asComp=val2; S.asScores={}; S.asSaved=false; break;
     case "astype": S.asType=val2; break;
     case "evtype": S.evNew.type=val2; re=false; break;
+    case "evsid": S.evSid=val2; S.evErr=""; break;
+    case "evfile": {
+      const f=el.files&&el.files[0];
+      if(!f){ S.evNew.fileName=""; S.evNew.fileData=""; S.evNew.fileMime=""; break; }
+      if(f.size>10*1024*1024){ S.evErr="ไฟล์ใหญ่เกิน 10 เมกะไบต์ กรุณาลดขนาดก่อนอัปโหลด";
+        S.evNew.fileName=""; S.evNew.fileData=""; S.evNew.fileMime=""; break; }
+      const rd=new FileReader();
+      rd.onload=()=>{ S.evNew.fileName=f.name; S.evNew.fileMime=f.type||"application/octet-stream";
+        S.evNew.fileData=String(rd.result).split(",")[1]||""; S.evErr=""; render(); };
+      rd.onerror=()=>{ S.evErr="อ่านไฟล์ไม่สำเร็จ"; render(); };
+      rd.readAsDataURL(f);
+      re=false; break; }
     case "fwtarget": cfgOf(FW,S.year,v).target=+val2; break;
     case "fwtest": { const cf=cfgOf(FW,S.year,v); cf.test=cf.test||{open:true,n:30,min:45}; cf.test.open=true; break; }
     case "fwactive": cfgOf(FW,S.year,v).active=el.checked; break;
@@ -5576,8 +5687,8 @@ const LIVE = {
   version  : '',
   status   : null,          // ผลจากคำสั่ง health ใช้บอกว่าต้องติดตั้งหรือเติมข้อมูลอะไรอีก
   deep     : new Set(),          // รหัสนักศึกษาที่ดึงผลรายตัวชี้วัดแล้ว
+  evLoaded : new Set(),          // รหัสนักศึกษาที่ดึงแฟ้มสะสมงานแล้ว
   sync     : {done: 0, total: 0, running: false},
-  matrix   : [],                 // ผลรวมรายสมรรถนะจาก score.matrix
   fwLive   : false,              // กรอบสมรรถนะมาจากเซิร์ฟเวอร์
   bankLive : false,
   queue    : [],                 // งานเขียนที่ล้มเหลว รอส่งซ้ำ
@@ -5779,7 +5890,7 @@ async function liveHydrate() {
     Object.keys(RESP_L).forEach(k => delete RESP_L[k]);
     Object.keys(RESP_M).forEach(k => delete RESP_M[k]);
     Object.keys(HIST).forEach(k => delete HIST[k]);
-    LIVE.deep.clear();
+    LIVE.deep.clear(); LIVE.evLoaded.clear();
     EVIDENCE = []; PENDING = []; INVITES = [];
     if (!LIVE.bankLive) { BANK = buildBank(); bankChanged(); }
 
@@ -5806,12 +5917,9 @@ async function liveHydrate() {
         LIVE.info = 'การตรวจสอบ/ซิงก์ ItemBank ไม่สำเร็จ';
       }
     }
-    try {
-      const r = await API.call('score.matrix', {term_id: LIVE_CFG.term});
-      LIVE.matrix = r.rows || [];
-    } catch (e) { LIVE.matrix = []; }
-
-    /* 5) ผลรายตัวชี้วัด */
+    /* 5) ผลรายตัวชี้วัด
+       หมายเหตุ ไม่เรียก score.matrix ที่นี่ เพราะทุกหน้าคำนวณจาก RESP/HIST ที่ได้จาก
+       assess.byStudent อยู่แล้ว การเรียกซ้ำเป็นคำขอที่ช้าและไม่มีผู้ใช้ข้อมูล */
     if (role === 'Student') {
       await liveStudent(S.user.id, true);
       await liveExamResults(S.user.id);
@@ -5872,6 +5980,22 @@ async function liveExamResults(sid){
   }
 }
 
+/** ดึงแฟ้มสะสมงานของนักศึกษาหนึ่งคน ใช้ร่วมกันทั้งหน้าของนักศึกษาและของผู้ตรวจสอบ
+    force = true เมื่อต้องการดึงซ้ำหลังบันทึกหรือหลังตรวจสอบ */
+async function liveEvidence(sid, force) {
+  if (!liveOn() || !sid) return 0;
+  if (!force && LIVE.evLoaded.has(sid)) return 0;
+  LIVE.evLoaded.add(sid);                 // กันการยิงซ้ำระหว่างที่คำขอยังไม่กลับ
+  liveBusy(1);
+  try {
+    const r = await API.call('evidence.list', {student_id: sid});
+    applyEvidenceRows(sid, r.evidence);
+    LIVE.err = '';
+    return (r.evidence || []).length;
+  } catch (e) { LIVE.evLoaded.delete(sid); liveErr(e); return 0; }
+  finally { liveBusy(-1); }
+}
+
 /** ดึงผลรายตัวชี้วัดของนักศึกษาหนึ่งคน พร้อมแฟ้มสะสมงานเมื่อระบุ */
 async function liveStudent(sid, withEvidence) {
   if (!liveOn() || !sid) return;
@@ -5879,9 +6003,7 @@ async function liveStudent(sid, withEvidence) {
   try {
     const d = await API.call('assess.byStudent', {student_id: sid});
     applyAssessments(sid, d);
-    if (withEvidence) {
-      try { const e = await API.call('evidence.list', {student_id: sid}); applyEvidenceRows(sid, e.evidence); } catch (x) {}
-    }
+    if (withEvidence) await liveEvidence(sid, true);
   } catch (e) { liveErr(e); }
   finally { liveBusy(-1); }
 }
@@ -6011,12 +6133,19 @@ async function liveLogout() {
 
   const token = API.token;
 
-  /* ตัด Session ฝั่ง UI ทันที */
+  /* แจ้งเซิร์ฟเวอร์ให้ยกเลิกโทเคนก่อน เพราะ auth.logout ต้องอ่านโทเคนจากคำขอ
+     หากล้าง API.token ทิ้งก่อน เซสชันในชีต Sessions จะค้างอยู่จนหมดอายุเอง */
+  if (token) {
+    try { await API.call('auth.logout', {token: token}); }
+    catch (e) { console.warn('[PTRU] logout:', e); }
+  }
+
+  /* ตัด Session ฝั่ง UI */
   API.token = null;
   LIVE.session = false;
 
   LIVE.deep.clear();
-  LIVE.matrix = [];
+  LIVE.evLoaded.clear();
 
   try {
     sessionStorage.removeItem('ptru_token');
@@ -6030,15 +6159,6 @@ async function liveLogout() {
   S.page = 'dashboard';
 
   render();
-
-  /* แจ้ง Server แบบไม่บล็อก UI */
-  if (token) {
-    try {
-      await API.call('auth.logout', {}, token);
-    } catch (e) {
-      console.warn('[PTRU] logout:', e);
-    }
-  }
 }
 /*───────── 21.8ก. ซิงก์คลังข้อสอบลง ItemBank ─────────*/
 let ITEM_SAVE_TIMERS = {};
@@ -6287,7 +6407,10 @@ document.addEventListener('click', e => {
       role: (document.getElementById('iv_role') || {}).value || 'Mentor',
       quota: +val('iv_quota') || 5}};
   } else if (a === 'evadd') {
-    LIVE.intent = {act: a, data: {title: val('ev_title'), type: S.evNew.type, comps: [...S.evNew.comps]}};
+    LIVE.intent = {act: a, data: {title: val('ev_title'), type: S.evNew.type, comps: [...S.evNew.comps],
+      fileName: S.evNew.fileName, fileMime: S.evNew.fileMime, fileData: S.evNew.fileData}};
+  } else if (a === 'evverify' || a === 'evreject') {
+    LIVE.intent = {act: a, id: v, data: {sid: evidenceOwner()}};
   } else if (a === 'assave') {
     LIVE.intent = {act: a, data: {sid: S.asSid, comp: S.asComp, type: S.asType, scores: Object.assign({}, S.asScores)}};
   } else if (a === 'pfsave') {
@@ -6344,10 +6467,28 @@ document.addEventListener('click', e => {
                             INVITES = (r.invitations || r.invites || r.rows || []).map(mapInvite); } catch (x) {} });
       break;
     case 'evadd':
-      livePush('evidence.add', {title: d.title, evidence_type: d.type, comp_ids: d.comps, description: ''},
-        'บันทึกหลักฐานลงฐานข้อมูลแล้ว',
-        async () => { try { const r = await API.call('evidence.list', {student_id: S.user.id});
-                            applyEvidenceRows(S.user.id, r.evidence); } catch (x) {} });
+      /* มีไฟล์แนบให้ส่งขึ้น Google Drive ก่อน แล้วจึงผูก URL ไว้กับรายการหลักฐาน */
+      (async () => {
+        let url = '';
+        if (d.fileData) {
+          try {
+            const up = await API.call('file.upload', {kind: 'evidence', filename: d.fileName,
+              mime_type: d.fileMime, data_base64: d.fileData});
+            url = (up && up.file_url) || '';
+          } catch (x) { liveErr(x); render(); return; }
+        }
+        await livePush('evidence.add',
+          {title: d.title, evidence_type: d.type, comp_ids: d.comps, description: '', file_url: url},
+          url ? 'บันทึกหลักฐานและไฟล์แนบลงฐานข้อมูลแล้ว' : 'บันทึกหลักฐานลงฐานข้อมูลแล้ว',
+          async () => { await liveEvidence(S.user.id, true); });
+      })();
+      break;
+    case 'evverify':
+    case 'evreject':
+      livePush('evidence.verify',
+        {evidence_id: it.id, status: it.act === 'evverify' ? 'verified' : 'rejected', reason: ''},
+        it.act === 'evverify' ? 'บันทึกผลการตรวจสอบหลักฐานแล้ว' : 'ตีกลับหลักฐานให้นักศึกษาแก้ไขแล้ว',
+        async () => { await liveEvidence(d.sid, true); });
       break;
     case 'assave': {
       if (!d.sid || !d.comp || !Object.keys(d.scores).length) break;
@@ -6393,6 +6534,10 @@ document.addEventListener('change', e => {
   if (['dxsid', 'prgsid', 'edmsid', 'xaisid', 'assid'].includes(a)) {
     const sid = el.value;
     if (sid && !LIVE.deep.has(sid)) liveStudent(sid, a === 'prgsid' || a === 'dxsid').then(render);
+    return;
+  }
+  if (a === 'evsid') {                                  // เปลี่ยนนักศึกษาในหน้าแฟ้มสะสมงาน
+    if (el.value) liveEvidence(el.value, false).then(render);
     return;
   }
   if (a === 'avatarup') {                               // อัปโหลดรูปประจำตัวขึ้น Google Drive
@@ -6533,19 +6678,16 @@ async function liveConnect(retry) {
 
 render();
 </script>
-      <script language=JavaScript>
-<!--
-var message="Do not click right..!! (อย่าคลิ๊กขวา..!!)";
-///////////////////////////////////
-function clickIE() {if (document.all) {alert(message);return false;}}
-function clickNS(e) {if 
-(document.layers||(document.getElementById&&!document.all)) {
-if (e.which==2||e.which==3) {alert(message);return false;}}}
-if (document.layers) 
-{document.captureEvents(Event.MOUSEDOWN);document.onmousedown=clickNS;}
-else{document.onmouseup=clickNS;document.oncontextmenu=clickIE;}
-document.oncontextmenu=new Function("return false")
-// --> 
+<script>
+/* ปิดเมนูคลิกขวาตามนโยบายของคณะ
+   เขียนใหม่จากสคริปต์รุ่นเดิมที่อ้าง document.layers (Netscape 4) และสร้างฟังก์ชันจากสตริง
+   ซึ่งเบราว์เซอร์ปัจจุบันไม่รองรับและถูก Content-Security-Policy ปิดกั้น
+   ยกเว้นช่องกรอกข้อความ เพื่อให้ผู้ใช้ยังตัดแปะและแก้คำผิดได้ตามปกติ
+   หมายเหตุ มาตรการนี้เป็นเพียงการป้องปราม ไม่ได้ป้องกันการคัดลอกเนื้อหาได้จริง */
+document.addEventListener('contextmenu', e => {
+  if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  e.preventDefault();
+}, false);
 </script>
 </body>
 </html>
