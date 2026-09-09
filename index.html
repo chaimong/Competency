@@ -100,7 +100,7 @@ a{color:var(--text-soft)}
 .alert-info{background:var(--surface-2);border-color:var(--text-soft);color:var(--text-soft)}
 .notebox{background:var(--surface-2);border:1px solid var(--line);border-left:3px solid var(--text-soft);border-radius:3px;padding:.7rem .9rem;font-size:.8rem;color:var(--text-soft)}
 
-.reg2{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.8rem}
+.reg2{margin-top:.8rem}
 .reg2 .btn{width:100%}
 .demo{margin-top:1.5rem;border-top:1px solid var(--line-soft);padding-top:1rem}
 .demo h3{font-size:.84rem;font-family:'IBM Plex Sans Thai',sans-serif;font-weight:600}
@@ -602,10 +602,29 @@ function buildFramework(){
   return {levels,competencies,years,version:"2569.1-demo",updatedAt:""};
 }
 const ITEMS_PER_COMP_DEF=30;
+const EXAM_MIN_DEF=45;
 let FW = buildFramework();
 
 const yearOf = (fw,y) => fw.years.find(x=>x.year===y) || fw.years[0];
-const cfgOf  = (fw,y,cid) => yearOf(fw,y).config[cid] || {active:false,target:3,test:{open:true,n:ITEMS_PER_COMP_DEF,min:45},indicators:[]};
+const cfgOf  = (fw,y,cid) => yearOf(fw,y).config[cid] || {active:false,target:3,test:{open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF},indicators:[]};
+/** ตัวเข้าถึงค่ากำหนดรายชั้นปีสำหรับ "การแก้ไข"
+    cfgOf คืนวัตถุตั้งต้นชั่วคราวเมื่อชั้นปีนั้นยังไม่มีระเบียนของสมรรถนะ
+    การเขียนค่าลงไปจึงหายไปเงียบ ๆ พร้อมวัตถุที่ถูกทิ้ง เป็นเหตุให้ผู้ดูแลตั้งค่าแล้วไม่มีผล
+    ฟังก์ชันนี้สร้างระเบียนจริงเก็บไว้ใน FW ก่อน แล้วจึงคืนตัวที่แก้ไขได้จริง */
+function cfgEdit(y,cid){
+  const yc=yearOf(FW,y);
+  if(!yc.config[cid]){
+    const ys=(typeof YEAR_STAGES!=="undefined"&&YEAR_STAGES.find(s=>s.year===y))||{target:3};
+    yc.config[cid]={active:false,target:ys.target||3,
+      test:{open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF},indicators:[]};
+  }
+  const cf=yc.config[cid];
+  if(!cf.test) cf.test={open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF};
+  if(cf.test.n===undefined)   cf.test.n=ITEMS_PER_COMP_DEF;
+  if(cf.test.min===undefined) cf.test.min=EXAM_MIN_DEF;
+  if(!Array.isArray(cf.indicators)) cf.indicators=[];
+  return cf;
+}
 const activeComps = (fw,y) => fw.competencies.filter(c=>cfgOf(fw,y,c.id).active);
 const indsOf = (fw,y,cid) => cfgOf(fw,y,cid).indicators;
 const allInds = (fw,y) => activeComps(fw,y).flatMap(c=>indsOf(fw,y,c.id).map(i=>({...i,comp:c})));
@@ -1170,7 +1189,7 @@ const S={
   mode:"light", hue:"royal", a11y:"none", scale:1, drawer:false,
   year:4, fwTab:"year", fwSel:FW.competencies[0].id, psyTab:"irt", psyYear:4,
   dxSid:null, dxTab:"irt", dxCdm:false,
-  prgSid:null, iqMsg:"", irrTab:"sum", pfPhotoMsg:"", pfPhotoErr:false, xaiTab:"global", xaiModel:"logreg", xaiSid:null, fy:"all", fp:"all", repView:null, repMsg:"", repErr:false, irtModel:"4pl", irtCmp:false, edmModel:"logreg", edmCompare:false, edmSid:null, edmBusy:false,
+  prgSid:null, iqMsg:"", irrTab:"sum", pfPhotoMsg:"", pfPhotoErr:false, xaiTab:"global", xaiModel:"logreg", xaiSid:null, fy:"all", fp:"all", repView:null, repMsg:"", repErr:false, irtModel:"m4pl", irtCmp:false, edmModel:"logreg", edmCompare:false, edmSid:null, edmBusy:false,
   iqComp:null, iqTab:"ctt", iqItem:0,
   examComp:null, examAns:{}, examItems:[], examAttemptId:null, examDone:false, examQ:0, examBusy:false, examDbSaved:false, pfTab:"info", pfMsg:"", pfErr:"", histRound:"all",
   usrTab:"list", usrFilter:{role:"all",program:"all",year:"all",q:""}, usrEdit:null,
@@ -1477,8 +1496,9 @@ function loginView(){
     ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
     <button class="btn btn-primary" data-act="login">เข้าสู่ระบบ</button>
     <div class="linkrow"><button class="linkbtn" data-act="go" data-v="forgot">ลืมรหัสผ่าน</button></div>
-    <div class="reg2"><button class="btn btn-ghost btn-sm" data-act="go" data-v="regstudent">สมัครสมาชิก · นักศึกษา</button>
-      <button class="btn btn-ghost btn-sm" data-act="go" data-v="register">สมัครสมาชิก · ครูพี่เลี้ยง</button></div>
+    <div class="reg2"><button class="btn btn-ghost" data-act="go" data-v="register">สมัครสมาชิกใหม่</button>
+      <div class="hint" style="text-align:center;margin-top:.35rem">
+        ${REG_KINDS.map(k=>esc(k[1])).join(" · ")}</div></div>
     <div class="demo"><h3>บัญชีทดลองใช้</h3>
       <p>รหัสผ่านทุกบัญชีคือ ${PASSWORD} · นักศึกษาทุกคนเข้าระบบด้วยอีเมลของตนเอง (std2@ptru.ac.th ถึง std32@ptru.ac.th)
       · อาจารย์คนอื่นใช้ lec3@ptru.ac.th ถึง lec7@ptru.ac.th</p><div class="demo-grid">${demo}</div></div>
@@ -1564,7 +1584,8 @@ function regStep1(){
     ${cards}${stu}
     ${S.reg.notice?`<div class="alert alert-info">${esc(S.reg.notice)}</div>`:""}
     ${S.err?`<div class="alert alert-err">${esc(S.err)}</div>`:""}
-    <button class="btn btn-primary" data-act="regnext1">${regIsStudent()?"ตรวจสอบรหัสและไปต่อ":"ถัดไป"}</button>
+    <button class="btn btn-primary" data-act="regnext1" ${S.reg.kind?"":"disabled style=opacity:.45"}>${
+      !S.reg.kind?"เลือกประเภทผู้สมัครก่อน":(regIsStudent()?"ตรวจสอบรหัสและไปต่อ":"ถัดไป")}</button>
     <div class="linkrow"><button class="linkbtn" data-act="go" data-v="login">กลับไปหน้าเข้าสู่ระบบ</button></div>`;
 }
 
@@ -1881,8 +1902,10 @@ function frameworkPage(readOnly,roMaster){
 function fwYearTab(y,ro){
   const yc=yearOf(FW,y);
   const rows=FW.competencies.map(c=>{
-    const v=cfgOf(FW,y,c.id);
-    v.test=v.test||{open:true,n:30,min:45}; v.test.open=true;
+    /* ต้องใช้ตัวเข้าถึงแบบเขียนได้ เพราะแถวนี้เติมค่าตั้งต้นของ test ให้สมรรถนะที่ยังไม่มีระเบียน
+       ถ้าใช้ cfgOf ค่าที่เติมจะตกอยู่กับวัตถุชั่วคราว แล้วช่องที่ผู้ใช้กรอกก็บันทึกไม่ติด */
+    const v=cfgEdit(y,c.id);
+    v.test.open=true;
     const tsel=FW.levels.map((l,k)=>`<option value="${k+1}" ${v.target===k+1?"selected":""}>${k+1}</option>`).join("");
     return `<tr style="${v.active?"":"opacity:.5"}">
       <td class="qcell"><input type="checkbox" ${v.active?"checked":""} ${ro?"disabled":""} data-act="fwactive" data-v="${c.id}"></td>
@@ -1899,13 +1922,40 @@ function fwYearTab(y,ro){
   const action=ro?"":`<div class="row">
     <select class="inp" style="width:auto" data-act="fwcopy"><option value="">คัดลอกจากชั้นปี…</option>${copy}</select>
     <button class="btn btn-ghost btn-sm" data-act="fwgenyear">สร้างตัวชี้วัดทั้งชั้นปีอัตโนมัติ</button></div>`;
-  return card(`การตั้งค่า${yc.label}`,`เปิดหรือปิดสมรรถนะ กำหนดระดับเป้าหมาย และเข้าสู่แบบทดสอบวัดสมรรถนะได้ทันที (คลังข้อสอบ ${N_CHOICE} ตัวเลือก สมรรถนะละ ${ITEMS_PER_COMP} ข้อโดยตั้งต้น)`,
+  return `<div class="stack">${card(`การตั้งค่า${yc.label}`,
+    `เปิดหรือปิดสมรรถนะ กำหนดระดับเป้าหมาย จำนวนข้อสอบและเวลาสอบ ${ro?"":"ทุกค่าบันทึกลงฐานข้อมูลอัตโนมัติและมีผลกับผู้ประเมินทุกคนทันที"}`,
     `<div class="grid g2" style="gap:.7rem;margin-bottom:.9rem">
       <div class="field" style="margin-top:0"><label>ชื่อชั้นปี</label><input class="inp" value="${esc(yc.label)}" ${ro?"disabled":""} data-act="fwylabel" data-nore></div>
       <div class="field" style="margin-top:0"><label>ระยะพัฒนาการ</label><input class="inp" value="${esc(yc.stage)}" ${ro?"disabled":""} data-act="fwystage" data-nore></div></div>
      <div class="scroll-x"><table class="tight"><thead><tr><th style="width:40px">เปิด</th><th>สมรรถนะ</th><th>PTRU</th><th class="num">ตัวชี้วัด</th><th class="num" style="width:96px">เป้าหมาย</th>
       <th style="width:220px">แบบทดสอบ</th><th class="num" style="width:78px">จำนวนข้อ</th><th class="num" style="width:78px">นาที</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`,
-    action);
+    action)}
+    ${fwYearImpact(y)}</div>`;
+}
+/** ผลของการตั้งค่าที่ผู้ประเมินจะเห็นจริง
+    วางไว้ใต้ตารางเพื่อให้ผู้ดูแลตรวจได้ทันทีว่าที่ตั้งไว้ตรงกับสิ่งที่ปรากฏในแบบประเมินหรือไม่ */
+function fwYearImpact(y){
+  const yc=yearOf(FW,y), open=activeComps(FW,y);
+  const inds=open.reduce((n,c)=>n+cfgOf(FW,y,c.id).indicators.length,0);
+  const noInd=open.filter(c=>!cfgOf(FW,y,c.id).indicators.length);
+  const tAvg=open.length?mean(open.map(c=>cfgOf(FW,y,c.id).target)):null;
+  const stu=students().filter(s=>+s.year===y);
+  /* ผู้ประเมินที่มีสิทธิ์ให้คะแนนชั้นปีนี้ นับจากบทบาทจริงในทะเบียนผู้ใช้ */
+  const raterRoles=["Lecturer","MajorAdvisor","Mentor"];
+  const raters=USERS.filter(u=>(u.roles||[]).some(r=>raterRoles.includes(r))&&u.status==="active");
+  const warn=[];
+  if(!open.length) warn.push("ยังไม่ได้เปิดสมรรถนะใดเลย แบบประเมินของชั้นปีนี้จะว่างเปล่า ผู้ประเมินจะบันทึกคะแนนไม่ได้");
+  if(noInd.length) warn.push(`เปิดใช้แล้วแต่ยังไม่มีตัวชี้วัด ${noInd.length} สมรรถนะ (${noInd.map(c=>c.code).join(" · ")}) ผู้ประเมินจะเห็นหัวข้อว่าง`);
+  return card("สิ่งที่ผู้ประเมินจะเห็นจากการตั้งค่านี้",
+    "ตรวจความสอดคล้องระหว่างการตั้งค่ากับแบบประเมินที่อาจารย์นิเทศก์ ครูพี่เลี้ยง และนักศึกษาใช้จริง",
+    `<div class="grid g4" style="gap:.7rem">
+      ${stat("สมรรถนะในแบบประเมิน",`${open.length} / ${FW.competencies.length}`,"เฉพาะรายการที่ติ๊กเปิดไว้")}
+      ${stat("ตัวชี้วัดที่ต้องให้คะแนน",inds,`เฉลี่ย ${open.length?(inds/open.length).toFixed(1):"—"} ข้อต่อสมรรถนะ`)}
+      ${stat("ระดับเป้าหมายเฉลี่ย",tAvg===null?"—":fmt(tAvg,1),`จาก ${FW.levels.length} ระดับ`)}
+      ${stat("ผู้เกี่ยวข้อง",`${stu.length} นักศึกษา`,`ผู้ประเมิน ${raters.length} คน · สูตร ${SCORE_RULE.replace("คะแนนรวม = ","")}`)}
+    </div>
+    ${warn.length?`<div class="alert alert-err" style="margin-top:.8rem">${warn.map(esc).join("<br>")}</div>`
+      :`<div class="alert alert-ok" style="margin-top:.8rem">การตั้งค่าสอดคล้องกันแล้ว สมรรถนะที่เปิดไว้ทุกรายการมีตัวชี้วัดพร้อมใช้ประเมิน</div>`}`);
 }
 function fwIndTab(y,ro,rubric){
   const yc=yearOf(FW,y), c=FW.competencies.find(x=>x.id===S.fwSel)||FW.competencies[0];
@@ -1959,7 +2009,7 @@ function fwLevelsTab(ro){
     <td><input class="inp" value="${esc(l.th)}" ${ro?"disabled":""} data-act="fwlv" data-v="${l.id}" data-k="th" data-nore></td>
     <td><input class="inp" value="${esc(l.en)}" ${ro?"disabled":""} data-act="fwlv" data-v="${l.id}" data-k="en" data-nore></td>
     <td class="sub">${esc(DEFAULT_DESC[i]||"—")}</td></tr>`).join("");
-  return card("ระดับสมรรถนะ","ใช้ร่วมกันทุกชั้นปีและทุกตัวชี้วัด การเพิ่มหรือลดระดับมีผลต่อโครงสร้างโมเดล IRT",
+  return card("ระดับสมรรถนะ","ใช้ร่วมกันทุกชั้นปีและทุกตัวชี้วัด การเพิ่มหรือลดระดับมีผลต่อโครงสร้างโมเดล MIRT และ GRM",
     `<table><thead><tr><th style="width:56px">ระดับ</th><th>ชื่อภาษาไทย</th><th>ชื่อภาษาอังกฤษ</th><th>คำอธิบายตั้งต้น</th></tr></thead><tbody>${rows}</tbody></table>`,
     ro?"":`<div class="row"><button class="btn btn-ghost btn-sm" data-act="fwlvdel">ลบระดับสูงสุด</button>
       <button class="btn btn-ghost btn-sm" data-act="fwlvadd">เพิ่มระดับ</button></div>`,false);
@@ -3796,7 +3846,7 @@ function buildBank(){
 let BANK=buildBank();
 const bankOf=cid=>BANK.filter(i=>i.comp===cid);
 
-/** จำลองการตอบของกลุ่มทดลองใช้ (pilot) ด้วยโมเดล 2PL จากค่าพารามิเตอร์จริง */
+/** จำลองการตอบของกลุ่มทดลองใช้ (pilot) ด้วยโมเดล M4PL จากค่าพารามิเตอร์จริงของข้อสอบ */
 function buildPilot(){
   const rng=lcg(31415), K=FW.competencies.length;
   const theta=[], resp=[];
@@ -3911,14 +3961,36 @@ function cttAnalyze(cid){
   return {rows,kr20,mean:mt,sd:st,n,k};
 }
 
-/* ---------- IRT: สอบเทียบ 2PL ด้วยวิธี MMLE-EM ---------- */
+/* ---------- MIRT: สอบเทียบพารามิเตอร์รายมิติด้วยวิธี MMLE-EM ---------- */
 const QN=21, QX=Array.from({length:QN},(_,i)=>-4+i*8/(QN-1));
 const QW=QX.map(t=>Math.exp(-t*t/2));
-/** สอบเทียบ IRT  model = "2pl" | "3pl" | "4pl"
-    2PL ตรึงขอบล่างที่ 0 และขอบบนที่ 1 · 3PL ปล่อยขอบล่าง · 4PL ปล่อยทั้งสองขอบ */
+/** โมเดลการตอบสนองข้อสอบพหุมิติ (MIRT) ที่ระบบใช้กับคลังข้อสอบวัดสมรรถนะ
+    กรอบ PTRU กำหนดให้ข้อสอบแต่ละข้อวัดสมรรถนะเดียวตาม Q-matrix
+    จึงเป็นโครงสร้าง between-item multidimensionality ที่มี 17 มิติเท่าจำนวนสมรรถนะ
+    เวกเตอร์น้ำหนักองค์ประกอบ a ของแต่ละข้อมีสมาชิกไม่เป็นศูนย์เพียงตัวเดียว
+    ทั้งสามโมเดลต่างกันที่ขอบล่าง (โอกาสเดาถูก) และขอบบน (เพดานความสำเร็จ) */
+const MIRT_MODELS=[
+  ["m2pl","M2PL","Multidimensional Two-Parameter Logistic Model",
+   "ตรึงขอบล่างที่ 0 และขอบบนที่ 1 ใช้เฉพาะน้ำหนักองค์ประกอบและความยาก"],
+  ["m3pl","M3PL","Multidimensional Three-Parameter Logistic Model",
+   "เพิ่มขอบล่าง c คือโอกาสที่ผู้มีสมรรถนะต่ำจะเดาถูก"],
+  ["m4pl","M4PL","Multidimensional Four-Parameter Logistic Model",
+   "เพิ่มขอบบน d คือเพดานความสำเร็จของผู้มีสมรรถนะสูง"],
+];
+const MIRT_DEF="m4pl";
+/** ทำให้ชื่อโมเดลเป็นมาตรฐานเดียว รองรับค่าเดิมที่เคยบันทึกไว้เป็น 2pl 3pl 4pl */
+function mirtModel(m){
+  const s=String(m||"").toLowerCase().replace(/^m/,"");
+  return MIRT_MODELS.some(x=>x[0]==="m"+s) ? "m"+s : MIRT_DEF;
+}
+const mirtLabel=m=>(MIRT_MODELS.find(x=>x[0]===mirtModel(m))||MIRT_MODELS[2]);
+
+/** สอบเทียบพารามิเตอร์รายมิติของโมเดล MIRT  model = "m2pl" | "m3pl" | "m4pl"
+    เนื่องจากเป็นโครงสร้าง between-item ข้อสอบของสมรรถนะหนึ่งจึงประมาณค่าแยกจากมิติอื่นได้
+    โดยไม่เสียความถูกต้อง ส่วนความสัมพันธ์ระหว่างมิติประมาณจากค่า θ ในขั้น mirtAnalyze */
 function irtCalibrate(cid,iters,model){
-  model=model||"4pl";
-  const freeC=(model!=="2pl"), freeD=(model==="4pl");
+  model=mirtModel(model);
+  const freeC=(model!=="m2pl"), freeD=(model==="m4pl");
   const items=bankOf(cid), cols=items.map(it=>BANK.indexOf(it));
   const P={resp:pilotRows(cols)};          // ใช้เฉพาะผู้ที่ทำครบทุกข้อในชุดนี้
   const N=P.resp.length, J=items.length;
@@ -3947,7 +4019,7 @@ function irtCalibrate(cid,iters,model){
     }
     const M=Math.max(1,nk.reduce((x,y)=>x+y,0));
     /* M-step: ไต่ระดับความชันแบบมีขอบเขตและมีความรู้เดิมกำกับ
-       4PL มีปัญหาการระบุพารามิเตอร์ต่ำ จึงต้องใช้ prior ตรึงขอบล่างและขอบบนไว้ */
+       M4PL มีปัญหาการระบุพารามิเตอร์ต่ำ จึงต้องใช้ prior ตรึงขอบล่างและขอบบนไว้ */
     let maxMove=0;
     for(let j=0;j<J;j++){
       const a0=a[j],b0=b[j],c0=c[j],d0=d[j];
@@ -4003,9 +4075,10 @@ function irtCalibrate(cid,iters,model){
 }
 
 /* ---------- MIRT: โครงสร้าง between-item ทั้ง 17 มิติ ---------- */
-function mirtAnalyze(){
+function mirtAnalyze(model){
+  const md=mirtModel(model);
   const K=FW.competencies.length, dims=[];
-  FW.competencies.forEach(c=>dims.push(irtCalibrate(c.id,12)));
+  FW.competencies.forEach(c=>dims.push(irtCalibrate(c.id,12,md)));
   const N=dims[0].theta.length;
   const corr=[];
   for(let i=0;i<K;i++){
@@ -4017,7 +4090,17 @@ function mirtAnalyze(){
       corr[i].push(cv/((sdev(x)||1)*(sdev(y)||1)));
     }
   }
-  return {dims,corr,N,K};
+  return {dims,corr,N,K,model:md};
+}
+/** ปริมาณเชิงพหุมิติของข้อสอบหนึ่งข้อ
+    MDISC = ||a|| คือความยาวของเวกเตอร์น้ำหนักองค์ประกอบ บอกอำนาจจำแนกรวมทุกมิติ
+    MDIFF = -d/||a|| เมื่อ d คือค่าตัดแกน ในการกำหนดพารามิเตอร์แบบ a(θ-b) จะได้ d = -a·b
+    โครงสร้าง between-item ทำให้เวกเตอร์ a มีสมาชิกเดียว ค่าทั้งสองจึงลดรูปเหลือ a และ b
+    คำนวณจาก Q-matrix จริงไว้ เพื่อให้ยังถูกต้องหากเปลี่ยนไปใช้โครงสร้าง within-item ในอนาคต */
+function mirtItemStats(aVec,bScalar){
+  const disc=Math.sqrt(aVec.reduce((s,x)=>s+x*x,0));
+  return {mdisc:disc, mdiff:disc>1e-9?bScalar:0,
+          dir:aVec.map(x=>disc>1e-9?x/disc:0)};
 }
 
 /* ============================================================
@@ -4199,8 +4282,8 @@ function trainNeuralIRT(D,epochs,onEpoch){
    ============================================================ */
 let IQ_CACHE={};
 function iqCTT(cid){ return IQ_CACHE["ctt"+cid]||(IQ_CACHE["ctt"+cid]=cttAnalyze(cid)); }
-function iqIRT(cid){ const k="irt"+cid+(S.irtModel||"4pl");
-  return IQ_CACHE[k]||(IQ_CACHE[k]=irtCalibrate(cid,30,S.irtModel||"4pl")); }
+function iqIRT(cid){ const m=mirtModel(S.irtModel), k="mirt"+cid+m;
+  return IQ_CACHE[k]||(IQ_CACHE[k]=irtCalibrate(cid,30,m)); }
 let MIRT_CACHE=null;
 
 function twoLineSVG(xs,a,b,la,lb,ymax){
@@ -4248,20 +4331,21 @@ function infoSVG(info){
 function itemQualityPage(){
   if(!S.iqComp) S.iqComp=FW.competencies[0].id;
   const c=FW.competencies.find(x=>x.id===S.iqComp)||FW.competencies[0];
-  const tabs=[["ctt","CTT"],["irt","IRT (2PL)"],["mirt","MIRT 17 มิติ"],["items","รายการข้อสอบและเฉลย"]]
+  const tabs=[["ctt","CTT"],["irt","MIRT รายสมรรถนะ"],["mirt",`MIRT ${FW.competencies.length} มิติ`],["items","รายการข้อสอบและเฉลย"]]
     .map(([k,l])=>`<button class="${S.iqTab===k?"on":""}" data-act="iqtab" data-v="${k}">${l}</button>`).join("");
   const sel=`<div class="field" style="margin-top:0;max-width:420px"><label>สมรรถนะ</label>
     <select class="inp" data-act="iqcomp">${FW.competencies.map(x=>`<option value="${x.id}" ${x.id===c.id?"selected":""}>${x.code} · ${esc(x.th)}</option>`).join("")}</select></div>`;
   let body="";
-  if(S.iqTab==="irt") body=irtModelBar(c)+`<div style="height:1rem"></div>`+iqIrtView(c);
-  else if(S.iqTab==="mirt") body=iqMirtView();
+  if(S.iqTab==="irt") body=mirtModelBar(c)+`<div style="height:1rem"></div>`+iqIrtView(c);
+  else if(S.iqTab==="mirt") body=mirtModelBar(c)+`<div style="height:1rem"></div>`+iqMirtView();
   else if(S.iqTab==="items") body=iqItemsView(c);
   else body=iqCttView(c);
   return `<div class="stack">
     ${itemDataNote()}
     ${card("คุณภาพข้อสอบวัดสมรรถนะ",`${c.code} · ${esc(c.th)} · ${bankOf(c.id).length} ข้อ · ${N_CHOICE} ตัวเลือก`,sel)}
     <div class="tabs">${tabs}</div>${body}
-    <div class="notebox">${docStamp("ที่มา: "+(PILOT_SRC==="real"?"ชีต ExamAnswers":"ข้อมูลจำลองตามพารามิเตอร์ของข้อสอบ"))}</div></div>`;
+    <div class="notebox">${docStamp(`โมเดล: ${mirtLabel(S.irtModel)[1]} · ${mirtLabel(S.irtModel)[2]} · ที่มา: `+
+      (PILOT_SRC==="real"?"ชีต ExamAnswers":"ข้อมูลจำลองตามพารามิเตอร์ของข้อสอบ"))}</div></div>`;
 }
 function iqCttView(c){
   const A=iqCTT(c.id);
@@ -4281,38 +4365,50 @@ function iqCttView(c){
       `<div class="scroll-x"><table class="tight" style="min-width:760px"><thead><tr><th>ข้อ</th><th class="num">p</th><th>ระดับความยาก</th>
         <th class="num">rpb</th><th>อำนาจจำแนก</th><th>สัดส่วนการเลือกตัวเลือก</th></tr></thead><tbody>${rows}</tbody></table></div>`,"",false)}</div>`;
 }
-function irtModelBar(c){
-  const opts=[["2pl","2PL","ตรึงขอบล่างที่ 0 และขอบบนที่ 1"],
-              ["3pl","3PL","ปล่อยขอบล่าง (โอกาสเดาถูก)"],
-              ["4pl","4PL","ปล่อยทั้งขอบล่างและขอบบน"]];
-  const cur=S.irtModel||"4pl";
+function mirtModelBar(c){
+  const cur=mirtModel(S.irtModel), L=mirtLabel(cur);
   const cmp=S.irtCmp?(()=>{
-    const rs=opts.map(([id])=>irtCalibrate(c.id,30,id));
+    const rs=MIRT_MODELS.map(([id])=>irtCalibrate(c.id,30,id));
     const bestA=rs.reduce((x,y)=>y.aic<x.aic?y:x), bestB=rs.reduce((x,y)=>y.bic<x.bic?y:x);
-    return card("เปรียบเทียบความกลมกลืนของโมเดล",
+    return card("เปรียบเทียบความกลมกลืนของโมเดล MIRT",
       "ค่า AIC และ BIC ยิ่งต่ำยิ่งดี · BIC ลงโทษจำนวนพารามิเตอร์หนักกว่า จึงมักเลือกโมเดลที่เรียบง่ายกว่า",
-      `<table class="tight"><thead><tr><th>โมเดล</th><th class="num">พารามิเตอร์</th>
+      `<div class="scroll-x"><table class="tight" style="min-width:820px"><thead><tr><th>โมเดล</th><th class="num">พารามิเตอร์</th>
         <th class="num">log-likelihood</th><th class="num">AIC</th><th class="num">BIC</th>
         <th class="num">ความเที่ยง</th><th class="num">รอบ EM</th></tr></thead><tbody>
-        ${rs.map((r,i)=>`<tr><td>${opts[i][1]}<div class="sub">${opts[i][2]}</div></td>
+        ${rs.map((r,i)=>`<tr><td><b>${MIRT_MODELS[i][1]}</b><div class="sub">${MIRT_MODELS[i][2]}</div>
+            <div class="sub">${MIRT_MODELS[i][3]}</div></td>
           <td class="num">${r.nPar}</td><td class="num">${r.logLik.toFixed(1)}</td>
           <td class="num">${r.aic.toFixed(1)}${r===bestA?' <span class="tag tag-ok">ต่ำสุด</span>':""}</td>
           <td class="num">${r.bic.toFixed(1)}${r===bestB?' <span class="tag tag-ok">ต่ำสุด</span>':""}</td>
           <td class="num">${r.rel.toFixed(3)}</td><td class="num">${r.iters}</td></tr>`).join("")}
-      </tbody></table>
-      <div class="notebox" style="margin-top:.8rem">ขอบล่างและขอบบนของ 4PL เป็นพารามิเตอร์ที่ระบุค่าได้ยาก
+      </tbody></table></div>
+      <div class="notebox" style="margin-top:.8rem">ขอบล่างและขอบบนของ M4PL เป็นพารามิเตอร์ที่ระบุค่าได้ยาก
         ต้องใช้ผู้สอบจำนวนมากจึงจะประมาณได้เสถียร ระบบจึงใส่ความรู้เดิมตรึงค่าทั้งสองไว้ใกล้ระดับการเดาสุ่มและใกล้เพดาน
-        หากผลเปรียบเทียบชี้ว่า BIC ของ 2PL หรือ 3PL ต่ำกว่า ควรเลือกโมเดลที่เรียบง่ายกว่าเพื่อความเสถียรของการวัด</div>`);
+        หากผลเปรียบเทียบชี้ว่า BIC ของ M2PL หรือ M3PL ต่ำกว่า ควรเลือกโมเดลที่เรียบง่ายกว่าเพื่อความเสถียรของการวัด</div>`);
   })():"";
-  return `<div class="bar-strip"><span class="lb">โมเดล IRT</span>
-      ${opts.map(([id,lb])=>`<button class="${cur===id?"on":""}" data-act="setirt" data-v="${id}">${lb}</button>`).join("")}
+  return `<div class="bar-strip"><span class="lb">โมเดล MIRT</span>
+      ${MIRT_MODELS.map(([id,lb,en])=>`<button class="${cur===id?"on":""}" data-act="setirt" data-v="${id}" title="${en}">${lb}</button>`).join("")}
       <button class="btn btn-ghost btn-sm" data-act="irtcmp">${S.irtCmp?"ซ่อนการเปรียบเทียบ":"เปรียบเทียบทั้งสามโมเดล"}</button>
-      <span class="far">ปัจจุบันใช้ ${cur.toUpperCase()} · ${opts.find(o=>o[0]===cur)[2]}</span></div>${cmp}`;
+      <span class="far">ใช้อยู่: ${L[1]} · ${L[2]}</span></div>
+    <div class="notebox" style="margin-top:.6rem">${esc(L[3])}
+      · โครงสร้างพหุมิติแบบ between-item ${FW.competencies.length} มิติตาม Q-matrix ของกรอบสมรรถนะ
+      ข้อสอบหนึ่งข้อวัดสมรรถนะเดียว เวกเตอร์น้ำหนักองค์ประกอบจึงมีสมาชิกไม่เป็นศูนย์ตัวเดียว</div>${cmp}`;
 }
 function iqIrtView(c){
-  const R=iqIRT(c.id);
+  const R=iqIRT(c.id), md=mirtModel(S.irtModel), L=mirtLabel(md);
+  const ci=FW.competencies.findIndex(x=>x.id===c.id);
+  const K=FW.competencies.length;
+  /* เวกเตอร์น้ำหนักองค์ประกอบตาม Q-matrix ของกรอบสมรรถนะ
+     โครงสร้าง between-item ทำให้มีสมาชิกไม่เป็นศูนย์ตัวเดียวคือมิติของสมรรถนะต้นสังกัด */
+  const stats=R.fit.map(f=>{
+    const aVec=Array.from({length:K},(_,m)=>m===ci?f.a:0);
+    return mirtItemStats(aVec,f.b);
+  });
+  const showC=(md!=="m2pl"), showD=(md==="m4pl");
   const rows=R.fit.map((f,j)=>`<tr><td>${f.it.id}</td>
-    <td class="num">${f.a.toFixed(2)}</td><td class="num">${f.b.toFixed(2)}</td>
+    <td class="num">${stats[j].mdisc.toFixed(2)}</td><td class="num">${stats[j].mdiff.toFixed(2)}</td>
+    ${showC?`<td class="num">${f.c.toFixed(3)}</td>`:""}
+    ${showD?`<td class="num">${f.d.toFixed(3)}</td>`:""}
     <td class="num" style="color:var(--muted)">${f.tA.toFixed(2)}</td>
     <td class="num" style="color:var(--muted)">${f.tB.toFixed(2)}</td>
     <td><span class="tag ${f.a>=1?"tag-ok":f.a>=0.6?"tag-warn":"tag-risk"}">${f.a>=1?"จำแนกดี":f.a>=0.6?"พอใช้":"จำแนกต่ำ"}</span></td>
@@ -4321,22 +4417,30 @@ function iqIrtView(c){
   const cr=(x,y)=>{const mx=mean(x),my=mean(y);return mean(x.map((v,i)=>(v-mx)*(y[i]-my)))/((sdev(x)||1)*(sdev(y)||1));};
   const ra=cr(R.fit.map(f=>f.a),R.fit.map(f=>f.tA)), rb=cr(R.fit.map(f=>f.b),R.fit.map(f=>f.tB));
   return `<div class="stack">
-    <div class="grid g4">${stat("วิธีสอบเทียบ","MMLE-EM","ควอดราเจอร์ 21 จุด")}
-      ${stat("ความเที่ยงเชิงขอบ",R.rel.toFixed(3))}
-      ${stat("การกู้คืนค่า a",ra.toFixed(3),"สหสัมพันธ์กับค่าที่ใช้จำลอง")}
-      ${stat("การกู้คืนค่า b",rb.toFixed(3),"สหสัมพันธ์กับค่าที่ใช้จำลอง")}</div>
+    <div class="grid g4">${stat("โมเดลที่ใช้",L[1],`สอบเทียบด้วย MMLE-EM ควอดราเจอร์ ${QN} จุด`)}
+      ${stat("มิติที่ข้อชุดนี้วัด",`${ci+1} / ${K}`,`${c.code} · ${esc(c.th)}`)}
+      ${stat("MDISC เฉลี่ย",mean(stats.map(s=>s.mdisc)).toFixed(2),"อำนาจจำแนกพหุมิติ ‖a‖")}
+      ${stat("ความเที่ยงเชิงขอบ",R.rel.toFixed(3),`AIC ${R.aic.toFixed(0)} · BIC ${R.bic.toFixed(0)}`)}</div>
     <div class="grid g2">
-      ${card("เส้นโค้งลักษณะข้อสอบ (ICC)",`${R.fit[k].it.id} · a = ${R.fit[k].a.toFixed(2)} · b = ${R.fit[k].b.toFixed(2)}`,iccSVG(R.fit[k].a,R.fit[k].b))}
-      ${card("เส้นโค้งสารสนเทศของแบบทดสอบ","จุดสูงสุดคือช่วงความสามารถที่แบบทดสอบวัดได้แม่นที่สุด",infoSVG(R.info))}
+      ${card("เส้นโค้งลักษณะข้อสอบ (ICC)",`${R.fit[k].it.id} · MDISC = ${stats[k].mdisc.toFixed(2)} · MDIFF = ${stats[k].mdiff.toFixed(2)}`,iccSVG(R.fit[k].a,R.fit[k].b))}
+      ${card("เส้นโค้งสารสนเทศของแบบทดสอบ","จุดสูงสุดคือช่วงความสามารถที่แบบทดสอบวัดได้แม่นที่สุดบนมิตินี้",infoSVG(R.info))}
     </div>
-    ${card("พารามิเตอร์รายข้อ","คอลัมน์สีจางคือค่าที่ใช้จำลองการตอบ แสดงไว้เพื่อให้ตรวจสอบความถูกต้องของการสอบเทียบได้",
-      `<div class="scroll-x"><table class="tight" style="min-width:720px"><thead><tr><th>ข้อ</th>
-        <th class="num">a ประมาณ</th><th class="num">b ประมาณ</th><th class="num">a จริง</th><th class="num">b จริง</th>
-        <th>คุณภาพ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`,"",false)}</div>`;
+    ${card("พารามิเตอร์รายข้อของโมเดล "+L[1],
+      "MDISC = ‖a‖ อำนาจจำแนกพหุมิติ · MDIFF = −d∕‖a‖ ความยากพหุมิติ · คอลัมน์สีจางคือค่าที่ใช้จำลองการตอบ ไว้ตรวจความถูกต้องของการสอบเทียบ",
+      `<div class="scroll-x"><table class="tight" style="min-width:${760+(showC?80:0)+(showD?80:0)}px"><thead><tr><th>ข้อ</th>
+        <th class="num">MDISC</th><th class="num">MDIFF</th>
+        ${showC?`<th class="num">c ขอบล่าง</th>`:""}${showD?`<th class="num">d ขอบบน</th>`:""}
+        <th class="num">a จริง</th><th class="num">b จริง</th>
+        <th>คุณภาพ</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+       <div class="notebox" style="margin-top:.8rem">การกู้คืนค่าที่ใช้จำลอง: a = ${ra.toFixed(3)} · b = ${rb.toFixed(3)}
+         (ยิ่งใกล้ 1 ยิ่งแสดงว่าการสอบเทียบคืนค่าพารามิเตอร์เดิมได้ดี)</div>`,"",false)}</div>`;
 }
 function iqMirtView(){
-  if(!MIRT_CACHE) return card("MIRT 17 มิติ","การคำนวณใช้เวลาราว 1–2 วินาที",
-    `<div class="empty">ยังไม่ได้คำนวณ</div><button class="btn btn-primary" data-act="iqmirt">คำนวณ MIRT ทั้ง 17 มิติ</button>`);
+  const L=mirtLabel(S.irtModel), K=FW.competencies.length;
+  if(!MIRT_CACHE||MIRT_CACHE.model!==mirtModel(S.irtModel))
+    return card(`MIRT ${K} มิติ · ${L[1]}`,`${L[2]} · การคำนวณใช้เวลาราว 1–2 วินาที`,
+      `<div class="empty">${MIRT_CACHE?"เปลี่ยนโมเดลแล้ว ต้องคำนวณใหม่":"ยังไม่ได้คำนวณ"}</div>
+       <button class="btn btn-primary" data-act="iqmirt">คำนวณ ${L[1]} ทั้ง ${K} มิติ</button>`);
   const M=MIRT_CACHE;
   const off=[]; for(let i=0;i<M.K;i++) for(let j=i+1;j<M.K;j++) off.push(M.corr[i][j]);
   const head=`<tr><th></th>${FW.competencies.map((c,k)=>`<th class="num" title="${esc(c.th)}">${k+1}</th>`).join("")}</tr>`;
@@ -4344,17 +4448,26 @@ function iqMirtView(){
     ${M.corr[i].map((v,j)=>{const n=clamp(Math.round(v*5),1,5);
       return `<td class="num" style="text-align:center;${i===j?"background:var(--line-soft)":`background:var(--l${n});color:${n>=4?"var(--l5-fg,#fff)":"var(--text)"}`}">${v.toFixed(2)}</td>`;}).join("")}</tr>`).join("");
   const rel=M.dims.map((d,i)=>`<tr><td style="font-size:.8rem">${i+1}. ${esc(FW.competencies[i].th)}</td>
+    <td class="num">${d.items.length}</td>
     <td class="num">${d.rel.toFixed(3)}</td><td class="num">${mean(d.a).toFixed(2)}</td>
-    <td class="num">${mean(d.b).toFixed(2)}</td></tr>`).join("");
+    <td class="num">${mean(d.b).toFixed(2)}</td>
+    <td class="num">${d.aic.toFixed(0)}</td><td class="num">${d.bic.toFixed(0)}</td></tr>`).join("");
+  const nPar=M.dims.reduce((s,d)=>s+d.nPar,0), llk=M.dims.reduce((s,d)=>s+d.logLik,0);
   return `<div class="stack">
-    <div class="notebox">ใช้โครงสร้าง between-item multidimensionality คือแต่ละข้อวัดมิติเดียวตามสมรรถนะต้นสังกัด
-      สหสัมพันธ์ระหว่างมิติคำนวณจากค่า θ แบบ EAP จึงต่ำกว่าค่าจริงเล็กน้อยตามธรรมชาติของการลดทอน (attenuation)</div>
-    <div class="grid g3">${stat("จำนวนมิติ",M.K)}${stat("ผู้สอบ",M.N)}
+    <div class="notebox">โมเดล <b>${L[1]}</b> · ${L[2]} — ${esc(L[3])}<br>
+      ใช้โครงสร้าง between-item multidimensionality คือแต่ละข้อวัดมิติเดียวตามสมรรถนะต้นสังกัดที่กำหนดไว้ใน Q-matrix
+      เวกเตอร์น้ำหนักองค์ประกอบจึงมีสมาชิกไม่เป็นศูนย์ตัวเดียว ทำให้ประมาณค่าทีละมิติได้โดยไม่เสียความถูกต้อง
+      ส่วนสหสัมพันธ์ระหว่างมิติคำนวณจากค่า θ แบบ EAP จึงต่ำกว่าค่าจริงเล็กน้อยตามธรรมชาติของการลดทอน (attenuation)</div>
+    <div class="grid g4">${stat("จำนวนมิติ",M.K,`ตามจำนวนสมรรถนะในกรอบ PTRU`)}${stat("ผู้สอบ",M.N)}
+      ${stat("พารามิเตอร์รวมทั้งโมเดล",nPar,`log-likelihood ${llk.toFixed(0)}`)}
       ${stat("สหสัมพันธ์เฉลี่ยระหว่างมิติ",mean(off).toFixed(3),`ช่วง ${Math.min(...off).toFixed(2)} ถึง ${Math.max(...off).toFixed(2)}`)}</div>
     ${card("เมทริกซ์สหสัมพันธ์ระหว่างมิติ","ช่องสีเข้มคือความสัมพันธ์สูง",
       `<div class="scroll-x"><table class="tight" style="min-width:${240+M.K*40}px"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`,"",false)}
-    ${card("ความเที่ยงและพารามิเตอร์เฉลี่ยรายมิติ","",
-      `<div class="scroll-y"><table class="tight"><thead><tr><th>มิติ</th><th class="num">ความเที่ยงเชิงขอบ</th><th class="num">a เฉลี่ย</th><th class="num">b เฉลี่ย</th></tr></thead><tbody>${rel}</tbody></table></div>`,"",false)}</div>`;
+    ${card("ความเที่ยงและพารามิเตอร์รายมิติ",
+      `พารามิเตอร์ของโมเดล ${L[1]} แยกตามมิติ · a เฉลี่ยคือ MDISC เฉลี่ยของมิตินั้น เพราะแต่ละข้อโหลดบนมิติเดียว`,
+      `<div class="scroll-x"><table class="tight" style="min-width:700px"><thead><tr><th>มิติ</th><th class="num">ข้อสอบ</th>
+        <th class="num">ความเที่ยงเชิงขอบ</th><th class="num">a เฉลี่ย</th><th class="num">b เฉลี่ย</th>
+        <th class="num">AIC</th><th class="num">BIC</th></tr></thead><tbody>${rel}</tbody></table></div>`,"",false)}</div>`;
 }
 function iqItemsView(c){
   const items=bankOf(c.id);
@@ -4597,7 +4710,7 @@ function edmDeepPanel(m,cache){
         <tr><td style="width:230px;color:var(--muted)">ลำดับการตอบ</td><td>ผู้สอบหนึ่งคนต่อหนึ่งสมรรถนะ ความยาว 30 ข้อ</td></tr>
         <tr><td style="color:var(--muted)">การแบ่งข้อมูล</td><td>แบ่งตามผู้สอบ 80 ต่อ 20 ผู้สอบในชุดทดสอบไม่ปรากฏในชุดฝึก</td></tr>
         <tr><td style="color:var(--muted)">งานที่ทำนาย</td><td>ความน่าจะเป็นที่จะตอบข้อถัดไปถูก จากประวัติการตอบก่อนหน้า</td></tr>
-        <tr><td style="color:var(--muted)">ที่มาของข้อมูล</td><td>การตอบของกลุ่มทดลองใช้ข้อสอบซึ่งจำลองจากโมเดล 2PL ยังไม่ใช่ข้อมูลผู้เรียนจริง</td></tr>
+        <tr><td style="color:var(--muted)">ที่มาของข้อมูล</td><td>การตอบของกลุ่มทดลองใช้ข้อสอบซึ่งจำลองจากโมเดล M4PL ตามพารามิเตอร์จริงของข้อสอบ ยังไม่ใช่ข้อมูลผู้เรียนจริง</td></tr>
       </tbody></table>`,"",false)}</div>`;
   const k=r.metrics;
   return `<div class="stack">${head}
@@ -6156,7 +6269,18 @@ function ensureAppStyles(){
     #loadscreen .box{display:flex;flex-direction:column;align-items:center;gap:.2rem;text-align:center}
     #loadscreen .ring{position:relative;width:148px;height:148px}
     #loadscreen .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
-    #loadscreen .spin{animation:ptru-spin 1.1s linear infinite;transform-origin:50% 50%}
+    /* หมุนรอบจุดกึ่งกลางของ viewBox ระบุเป็นหน่วยจริง ไม่ใช้เปอร์เซ็นต์
+       เพราะเปอร์เซ็นต์ขึ้นกับกล่องอ้างอิงที่แต่ละเบราว์เซอร์เลือกให้ ไม่แน่นอน */
+    #loadscreen .spin{animation:ptru-spin 1.15s linear infinite;
+      transform-box:view-box;transform-origin:60px 60px}
+    /* วงกลมหมุนเป็นตัวบอกสถานะว่าระบบยังทำงานอยู่ ไม่ใช่ลูกเล่นตกแต่ง
+       กฎรวมท้ายไฟล์ปิดแอนิเมชันทุกตัวเมื่อระบบปฏิบัติการตั้งค่าลดการเคลื่อนไหว (Windows: เอฟเฟกต์ภาพเคลื่อนไหว = ปิด)
+       วงกลมจึงค้างนิ่งจนผู้ใช้เข้าใจผิดว่าระบบแฮงก์ ที่นี่คืนการหมุนให้เฉพาะวงนี้วงเดียว
+       และลดความเร็วลงเพื่อให้ยังนุ่มนวลตามเจตนาของการตั้งค่า
+       สไตล์ชุดนี้ฉีดเข้า head ทีหลัง จึงชนะกฎรวมที่มี !important เท่ากัน */
+    @media (prefers-reduced-motion:reduce){
+      #loadscreen .spin{animation:ptru-spin 2.4s linear infinite!important}
+    }
     #loadscreen .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
       font-family:'Noto Serif Thai',serif;font-size:1.7rem;font-weight:600;color:var(--ai-blue)}
     #loadscreen h3{margin:.9rem 0 .1rem;font-size:1.05rem}
@@ -6323,6 +6447,9 @@ function ensureAppStyles(){
    เปอร์เซ็นต์ผูกกับขั้นตอนจริงที่ทำเสร็จแล้ว ไม่ใช่ตัวเลขที่วิ่งเองตามเวลา
    ผู้ใช้จึงรู้ว่าระบบค้างอยู่ที่ขั้นใดหากช้าผิดปกติ */
 const LOADER={pct:0,stage:""};
+/* ระยะเวลาที่ปล่อยให้ข้อความ กำลังออกจากระบบ ค้างอยู่ก่อนแจ้งผลสำเร็จ
+   การออกจากระบบเองเสร็จทันที ค่านี้จึงมีไว้ให้ผู้ใช้อ่านข้อความทัน ไม่ได้ถ่วงการทำงาน */
+const LOGOUT_NOTICE_MS=550;
 function loaderShow(title){
   ensureAppStyles();
   let el=document.getElementById("loadscreen");
@@ -6339,8 +6466,10 @@ function loaderShow(title){
           <circle id="ld-arc" cx="60" cy="60" r="46" fill="none" stroke="var(--ai-blue)" stroke-width="7"
             stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289"
             style="transition:stroke-dashoffset .35s ease"></circle>
-          <circle class="spin" cx="60" cy="60" r="34" fill="none" stroke="var(--ai-blue)" stroke-width="3"
-            stroke-linecap="round" stroke-dasharray="36 178" opacity=".75"></circle>
+          <!-- หัวขบวนหมุนวิ่งบนวงเส้นประรอบนอก จึงกวาดครบรอบวงกลมให้เห็นชัดว่าระบบยังทำงานอยู่
+               เส้นรอบวงที่ r=54 ยาว 339 หน่วย ขีดยาว 52 เว้น 288 จึงเหลือหัวขบวนเดียววิ่งวน -->
+          <circle class="spin" cx="60" cy="60" r="54" fill="none" stroke="var(--ai-blue)" stroke-width="5"
+            stroke-linecap="round" stroke-dasharray="52 288"></circle>
         </svg>
         <div class="pct" id="ld-pct">0%</div>
       </div>
@@ -6441,9 +6570,11 @@ document.addEventListener("click",e=>{
       const back=document.getElementById(v); if(back){ back.focus(); back.setSelectionRange(back.value.length,back.value.length); }
       re=false; break; }
     case "go": S.screen=v; S.err=""; S.notice=""; S.forgotSent=false;
-      /* ทั้งสองปุ่มเปิดหน้าสมัครหน้าเดียวกัน ต่างกันแค่ประเภทที่เลือกไว้ให้ล่วงหน้า */
+      /* หน้าแรกเหลือปุ่มสมัครสมาชิกปุ่มเดียว จึงไม่เลือกประเภทไว้ล่วงหน้า
+         ผู้สมัครกดเลือกเองได้ทั้งสี่ประเภทในขั้นที่ 1
+         ส่วน regstudent คงไว้สำหรับลิงก์เดิมที่ชี้มาสมัครนักศึกษาโดยตรง */
       if(v==="register"||v==="regstudent")
-        S.reg={step:1, kind:v==="register"?"mentor":"student", data:{}, found:null, notice:"", ref:""};
+        S.reg={step:1, kind:v==="regstudent"?"student":"", data:{}, found:null, notice:"", ref:""};
       break;
     case "login": {
       const em=val("em"), pw=val("pw");
@@ -6459,12 +6590,21 @@ document.addEventListener("click",e=>{
     case "otp": { if(val("otp")==="246810"){S.user=S.otpUser;S.role=S.otpUser.roles[0];S.otpUser=null;S.err="";S.page="dashboard";}
       else S.err="รหัสยืนยันไม่ถูกต้อง รหัสมีอายุ 5 นาที"; break; }
     case "otpback": S.otpUser=null; S.err=""; break;
-    case "logout": S.user=null; S.role=null; S.screen="login"; S.err=""; S.notice=""; break;
+    /* แจ้งเตือนทันทีที่กด แล้วค่อยแจ้งผลสำเร็จหลังวาดหน้าจอใหม่
+       ผู้ใช้จึงเห็นว่าระบบรับคำสั่งแล้ว ไม่ต้องเดาว่ากดติดหรือไม่ */
+    case "logout": {
+      const who=(S.user&&S.user.name)?" · "+S.user.name:"";
+      toast("⏳ กำลังออกจากระบบ"+who+"…","wait",true);
+      S.user=null; S.role=null; S.screen="login"; S.err=""; S.notice="";
+      setTimeout(()=>toast("ออกจากระบบเรียบร้อยแล้ว","ok"),LOGOUT_NOTICE_MS);
+      break; }
     /* --- สมัครสมาชิก (ชุดเดียว ใช้ร่วมกันทุกประเภทผู้สมัคร) --- */
     case "regkind": { S.reg.kind=v; S.reg.found=null; S.reg.notice=""; S.err=""; break; }
     case "regback": { S.reg.step=Math.max(1,+v||1); S.err=""; break; }
     case "regnext1": {
       const d=S.reg.data;
+      /* กันกรณีกดถัดไปโดยยังไม่เลือกประเภท ปุ่มถูกปิดไว้แล้วแต่ยังกดผ่านแป้นพิมพ์ได้ */
+      if(!S.reg.kind){S.err="กรุณาเลือกประเภทผู้สมัครก่อน";break;}
       if(regIsStudent()){
         const code=val("rg_code").trim();
         const em=normEmail(val("rg_em1"));
@@ -6629,38 +6769,52 @@ document.addEventListener("click",e=>{
     case "setpsyyear": S.psyYear=+v; S.msg=""; break;
     case "fwtab": S.fwTab=v; S.msg=""; break;
     case "fwpick": S.fwSel=v; if(S.fwTab==="year") S.fwTab="ind"; break;
-    case "fwactive": { const cf=cfgOf(FW,S.year,v); cf.active=el.checked; break; }
-    case "fwinddel": { const cf=cfgOf(FW,S.year,S.fwSel); cf.indicators=cf.indicators.filter(i=>i.id!==v); break; }
+    case "fwactive": { cfgEdit(S.year,v).active=el.checked; saveYearCfg(S.year); break; }
+    case "fwinddel": { const cf=cfgEdit(S.year,S.fwSel); cf.indicators=cf.indicators.filter(i=>i.id!==v);
+      if(/-/.test(String(v))) livePush("ind.delete",{ind_id:v},"ลบตัวชี้วัดออกจากฐานข้อมูลแล้ว"); break; }
     case "fwindadd": { const ci=FW.competencies.findIndex(x=>x.id===S.fwSel);
-      cfgOf(FW,S.year,S.fwSel).indicators.push(makeIndicator("ตัวชี้วัดใหม่",FW.competencies.length,ci,FW.levels.length,Math.random)); break; }
+      const ni=makeIndicator("ตัวชี้วัดใหม่",FW.competencies.length,ci,FW.levels.length,Math.random);
+      cfgEdit(S.year,S.fwSel).indicators.push(ni); saveInd(S.year,S.fwSel,ni); break; }
     case "fwgencomp": { const ys=YEAR_STAGES.find(s=>s.year===S.year)||YEAR_STAGES[3];
       const c=FW.competencies.find(x=>x.id===S.fwSel), ci=FW.competencies.indexOf(c);
-      cfgOf(FW,S.year,S.fwSel).indicators=ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),FW.competencies.length,ci,FW.levels.length,Math.random));
+      cfgEdit(S.year,S.fwSel).indicators=ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),FW.competencies.length,ci,FW.levels.length,Math.random));
+      saveIndSet(S.year,S.fwSel);
       setMsg("สร้างร่างตัวชี้วัดจากแม่แบบระยะพัฒนาการของชั้นปีแล้ว กรุณาตรวจสอบและปรับถ้อยคำให้ตรงกับหลักสูตรก่อนใช้จริง"); break; }
     case "fwgenyear": { const ys=YEAR_STAGES.find(s=>s.year===S.year)||YEAR_STAGES[3];
-      FW.competencies.forEach((c,ci)=>{ const cf=cfgOf(FW,S.year,c.id); if(!cf.active) return;
-        cf.indicators=ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),FW.competencies.length,ci,FW.levels.length,Math.random)); });
+      FW.competencies.forEach((c,ci)=>{ const cf=cfgEdit(S.year,c.id); if(!cf.active) return;
+        cf.indicators=ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),FW.competencies.length,ci,FW.levels.length,Math.random));
+        saveIndSet(S.year,c.id); });
       setMsg(`สร้างร่างตัวชี้วัดของ${yearOf(FW,S.year).label}ทุกสมรรถนะที่เปิดใช้แล้ว ต้องตรวจสอบก่อนนำไปใช้ประเมินจริง`); break; }
-    case "fwautodesc": { const cf=cfgOf(FW,S.year,S.fwSel);
+    case "fwautodesc": { const cf=cfgEdit(S.year,S.fwSel);
       cf.indicators.forEach(i=>{ i.descriptors=FW.levels.map((l,k)=>DEFAULT_DESC[k]||("กำหนดคำอธิบายระดับ "+l.th)); });
+      saveIndSet(S.year,S.fwSel);
       setMsg("สร้างร่างคำอธิบายเกณฑ์แล้ว กรุณาปรับถ้อยคำให้สอดคล้องกับตัวชี้วัดแต่ละข้อ"); break; }
     case "fwcompadd": { const id=nid("C"); const n=FW.competencies.length+1;
-      FW.competencies.push({id,code:"PC-"+String(n).padStart(2,"0"),th:"สมรรถนะใหม่",en:"New competency",ptru:"P"});
-      FW.years.forEach(y=>{y.config[id]={active:false,target:3,test:{open:true,n:30,min:45},indicators:[]};});
-      reindexQ(); S.fwSel=id; setMsg("เพิ่มสมรรถนะหลักแล้ว สมรรถนะใหม่จะปิดใช้งานทุกชั้นปี ให้เปิดใช้เฉพาะชั้นปีที่ต้องการ"); break; }
+      const nc={id,code:"PC-"+String(n).padStart(2,"0"),th:"สมรรถนะใหม่",en:"New competency",ptru:"P"};
+      FW.competencies.push(nc);
+      FW.years.forEach(y=>{y.config[id]={active:false,target:3,
+        test:{open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF},indicators:[]};});
+      reindexQ(); S.fwSel=id;
+      if(liveOn()) livePush("comp.save",{comp_id:"",code:nc.code,name_th:nc.th,name_en:nc.en,ptru:nc.ptru,seq:n},
+        "เพิ่มสมรรถนะหลักลงฐานข้อมูลแล้ว", r=>{ if(r&&r.comp_id){
+          const old=nc.id; nc.id=r.comp_id;
+          FW.years.forEach(y=>{ y.config[r.comp_id]=y.config[old]; delete y.config[old]; });
+          if(S.fwSel===old) S.fwSel=r.comp_id; } });
+      setMsg("เพิ่มสมรรถนะหลักแล้ว สมรรถนะใหม่จะปิดใช้งานทุกชั้นปี ให้เปิดใช้เฉพาะชั้นปีที่ต้องการ"); break; }
     case "fwcompdel": { const k=FW.competencies.findIndex(x=>x.id===v); if(k<0) break;
       if(!confirm("ยืนยันการลบสมรรถนะนี้ออกจากทุกชั้นปี?")) break;
       FW.competencies.splice(k,1);
       FW.years.forEach(y=>{ delete y.config[v];
         Object.values(y.config).forEach(cf=>cf.indicators.forEach(i=>i.q.splice(k,1))); });
       if(S.fwSel===v) S.fwSel=FW.competencies[0]?FW.competencies[0].id:"";
+      if(/-/.test(String(v))) livePush("comp.delete",{comp_id:v},"ปิดใช้งานสมรรถนะในฐานข้อมูลแล้ว");
       setMsg("ลบสมรรถนะออกจากทุกชั้นปีแล้ว ผลการประเมินเดิมยังอยู่ในฐานข้อมูลแต่จะไม่ปรากฏในรายงานฉบับใหม่"); break; }
     case "fwlvadd": { const n=FW.levels.length+1;
       FW.levels.push({id:nid("L"),th:"ระดับที่ "+n,en:"Level "+n});
       FW.years.forEach(y=>Object.values(y.config).forEach(cf=>cf.indicators.forEach(i=>{
         i.descriptors.push("กำหนดคำอธิบายระดับนี้");
         i.irt.b.push(+(i.irt.b[i.irt.b.length-1]+1).toFixed(2));})));
-      setMsg("เพิ่มระดับแล้ว ระบบเพิ่มเกณฑ์แบ่งหมวดของโมเดล IRT ให้ทุกตัวชี้วัดทุกชั้นปี ควรสอบเทียบใหม่"); break; }
+      setMsg("เพิ่มระดับแล้ว ระบบเพิ่มเกณฑ์แบ่งหมวดของโมเดลวัดผลให้ทุกตัวชี้วัดทุกชั้นปี ควรสอบเทียบใหม่"); break; }
     case "fwlvdel": { if(FW.levels.length<=2){setMsg("ต้องมีอย่างน้อย 2 ระดับ");break;}
       FW.levels.pop();
       FW.years.forEach(y=>Object.values(y.config).forEach(cf=>cf.indicators.forEach(i=>{
@@ -6671,7 +6825,7 @@ document.addEventListener("click",e=>{
     /* --- โมเดลวัดผล --- */
     case "psytab": S.psyTab=v; S.msg=""; break;
     case "psyq": { const i=findInd(cid,v,S.psyYear); if(i){i.q[+k]=i.q[+k]?0:1;} break; }
-    case "psyautoq": { FW.competencies.forEach((c,ci)=>{ const cf=cfgOf(FW,S.psyYear,c.id);
+    case "psyautoq": { FW.competencies.forEach((c,ci)=>{ const cf=cfgEdit(S.psyYear,c.id);
         cf.indicators.forEach(i=>{ i.q=FW.competencies.map((_,kk)=>(kk===ci?1:0)); }); });
       setMsg("สร้าง Q-matrix ของชั้นปีนี้โดยผูกตัวชี้วัดกับสมรรถนะต้นสังกัด หากตัวชี้วัดใดต้องใช้หลายคุณลักษณะ กรุณาเพิ่มการเชื่อมโยงด้วยตนเอง"); break; }
     case "psycal": {
@@ -6706,8 +6860,10 @@ document.addEventListener("click",e=>{
       S.msg="ฝึกโมเดลเชิงลึกทั้งสี่เสร็จแล้วใน "+((Date.now()-t0)/1000).toFixed(1)+" วินาที"; break; }
     case "iqtab": S.iqTab=v; S.iqMsg=""; break;
     case "iqicc": S.iqItem=+v; S.iqTab="irt"; break;
-    case "iqmirt": MIRT_CACHE=mirtAnalyze(); break;
-    case "setirt": S.irtModel=v; IQ_CACHE={}; break;
+    case "iqmirt": MIRT_CACHE=mirtAnalyze(S.irtModel); break;
+    /* เปลี่ยนโมเดลแล้วต้องล้างผลรายสมรรถนะที่เก็บไว้ มิฉะนั้นตารางจะยังแสดงค่าของโมเดลเดิม
+       ส่วนผลพหุมิติเก็บชื่อโมเดลติดไว้ในตัวเอง หน้าจอจึงบอกได้เองว่าต้องคำนวณใหม่ */
+    case "setirt": S.irtModel=mirtModel(v); IQ_CACHE={}; break;
     case "irtcmp": S.irtCmp=!S.irtCmp; break;
     case "clearf": S.fy="all"; S.fp="all"; S.repView=null; S.repMsg=""; EDM_CACHE=null; S.dxSid=null; S.prgSid=null; break;
     case "repmake": { const R=buildReport(v);
@@ -6753,8 +6909,8 @@ document.addEventListener("click",e=>{
       bankChanged(); S.iqMsg="คืนค่าคลังข้อสอบของสมรรถนะนี้กลับเป็นชุดตั้งต้นแล้ว"; break; }
     case "fwexam": { S.examYear=S.year; S.examComp=v; S.page="exam"; break; }
     case "gotoiq": S.page="itemq"; S.iqComp=v; S.iqTab="ctt"; S.iqItem=0; break;
-    case "gotoexam": { FW.competencies.forEach(c=>{ const cf=cfgOf(FW,S.year,c.id); cf.test=cf.test||{open:true,n:30,min:45}; cf.test.open=true; }); S.page="exam"; S.examComp=v; S.examAns={}; S.examItems=[]; S.examAttemptId=null; S.examDone=false; S.examQ=0; break; }
-    case "fwtest": { const cf=cfgOf(FW,S.year,v); cf.test=cf.test||{open:true,n:30,min:45}; cf.test.open=true; break; }
+    case "gotoexam": { FW.competencies.forEach(c=>{ cfgEdit(S.year,c.id).test.open=true; }); S.page="exam"; S.examComp=v; S.examAns={}; S.examItems=[]; S.examAttemptId=null; S.examDone=false; S.examQ=0; break; }
+    case "fwtest": { cfgEdit(S.year,v).test.open=true; break; }
     case "examstart": void startExamFromServer(v); break;
     case "examexit": S.examComp=null; S.examAns={}; S.examItems=[]; S.examAttemptId=null; S.examDone=false; S.examQ=0; S.examBusy=false; S.examDbSaved=false; S.err=""; break;
     case "examans": S.examAns[v]=+k; S.err=""; break;
@@ -6885,7 +7041,7 @@ document.addEventListener("change",e=>{
       re=false; break; }
     case "setfy": S.fy=val2; S.repView=null; S.repMsg=""; EDM_CACHE=null; S.dxSid=null; S.prgSid=null; break;
     case "setfp": S.fp=val2; S.repView=null; S.repMsg=""; EDM_CACHE=null; S.dxSid=null; S.prgSid=null; break;
-    case "irtmodel": S.irtModel=val2; IQ_CACHE={}; break;
+    case "irtmodel": S.irtModel=mirtModel(val2); IQ_CACHE={}; MIRT_CACHE=null; break;
     case "iqcomp": S.iqComp=val2; S.iqItem=0; S.iqMsg=""; break;
     case "pfaff": case "pfgrp": case "pflvl": case "pfsch": break;
     case "lecscope": S.lecScope=val2; break;
@@ -6905,16 +7061,21 @@ document.addEventListener("change",e=>{
       rd.onerror=()=>{ S.evErr="อ่านไฟล์ไม่สำเร็จ"; render(); };
       rd.readAsDataURL(f);
       re=false; break; }
-    case "fwtarget": cfgOf(FW,S.year,v).target=+val2; break;
-    case "fwtest": { const cf=cfgOf(FW,S.year,v); cf.test=cf.test||{open:true,n:30,min:45}; cf.test.open=true; break; }
-    case "fwactive": cfgOf(FW,S.year,v).active=el.checked; break;
-    case "fwmcsel": { const c=FW.competencies.find(x=>x.id===v); if(c) c.ptru=val2; break; }
+    case "fwtarget": cfgEdit(S.year,v).target=+val2; saveYearCfg(S.year); break;
+    case "fwtest": { cfgEdit(S.year,v).test.open=true; saveYearCfg(S.year); break; }
+    case "fwactive": cfgEdit(S.year,v).active=el.checked; saveYearCfg(S.year); break;
+    case "fwmcsel": { const c=FW.competencies.find(x=>x.id===v); if(c){ c.ptru=val2; saveComp(c); } break; }
     case "fwcopy": { if(!val2) {re=false;break;}
       const src=yearOf(FW,+val2), dst=yearOf(FW,S.year);
+      /* เดิมคัดลอกไม่ครบ ตกทั้ง test (จำนวนข้อและเวลาสอบ) จนค่าที่ตั้งไว้หายไปเป็นค่าตั้งต้น */
       dst.config=Object.fromEntries(Object.entries(src.config).map(([cid2,cf])=>[cid2,{
         active:cf.active,target:cf.target,
+        test:{open:(cf.test&&cf.test.open)!==false,
+              n:(cf.test&&cf.test.n)||ITEMS_PER_COMP_DEF,
+              min:(cf.test&&cf.test.min)||EXAM_MIN_DEF},
         indicators:cf.indicators.map(i=>({id:nid("I"),th:i.th,descriptors:[...i.descriptors],
           irt:{a:i.irt.a,b:[...i.irt.b]},cdm:{...i.cdm},q:[...i.q]}))}]));
+      saveYearCfg(S.year,0);
       setMsg(`คัดลอกการตั้งค่าจากชั้นปีที่ ${val2} มายัง${dst.label}แล้ว ตัวชี้วัดถูกสร้างเป็นรายการใหม่ ไม่ผูกกับผลประเมินของชั้นปีต้นทาง`); break; }
     default: re=false;
   }
@@ -6956,18 +7117,18 @@ document.addEventListener("input",e=>{
     case "usrq": S.usrFilter.q=val2; clearTimeout(window.__q); window.__q=setTimeout(render,300); break;
     case "evtitle": S.evNew.title=val2; break;
     case "evlink": S.evNew.link=val2.trim(); break;
-    case "fwylabel": yearOf(FW,S.year).label=val2; break;
-    case "fwystage": yearOf(FW,S.year).stage=val2; break;
-    case "fwindtext": { const i=findInd(S.fwSel,v,S.year); if(i) i.th=val2; break; }
-    case "fwdesc": { const i=findInd(S.fwSel,v,S.year); if(i) i.descriptors[+k]=val2; break; }
-    case "fwmc": { const c=FW.competencies.find(x=>x.id===v); if(c) c[k]=val2; break; }
+    case "fwylabel": yearOf(FW,S.year).label=val2; saveYearCfg(S.year); break;
+    case "fwystage": yearOf(FW,S.year).stage=val2; saveYearCfg(S.year); break;
+    case "fwindtext": { const i=findInd(S.fwSel,v,S.year); if(i){ i.th=val2; saveInd(S.year,S.fwSel,i); } break; }
+    case "fwdesc": { const i=findInd(S.fwSel,v,S.year); if(i){ i.descriptors[+k]=val2; saveInd(S.year,S.fwSel,i); } break; }
+    case "fwmc": { const c=FW.competencies.find(x=>x.id===v); if(c){ c[k]=val2; saveComp(c); } break; }
     case "fwlv": { const l=FW.levels.find(x=>x.id===v); if(l) l[k]=val2; break; }
     case "psya": { const i=findInd(cid,v,S.psyYear); if(i) i.irt.a=+val2; break; }
     case "psyb": { const i=findInd(cid,v,S.psyYear); if(i) i.irt.b[+k]=+val2; break; }
     case "psyg": { const i=findInd(cid,v,S.psyYear); if(i) i.cdm.g=+val2; break; }
     case "psys": { const i=findInd(cid,v,S.psyYear); if(i) i.cdm.s=+val2; break; }
-    case "fwtestn": { const cf=cfgOf(FW,S.year,v); cf.test=cf.test||{open:false,min:45}; cf.test.n=clamp(+val2||30,5,30); break; }
-    case "fwtestm": { const cf=cfgOf(FW,S.year,v); cf.test=cf.test||{open:false,n:30}; cf.test.min=clamp(+val2||45,10,180); break; }
+    case "fwtestn": { cfgEdit(S.year,v).test.n=clamp(+val2||ITEMS_PER_COMP_DEF,5,30); saveYearCfg(S.year); break; }
+    case "fwtestm": { cfgEdit(S.year,v).test.min=clamp(+val2||EXAM_MIN_DEF,10,180); saveYearCfg(S.year); break; }
   }
 });
 
@@ -7201,8 +7362,11 @@ function applyFramework(d) {
     (indBy[k] = indBy[k] || []).push(i);
   });
 
+  /* ชื่อชั้นปีและระยะพัฒนาการที่ผู้ดูแลตั้งไว้ในฐานข้อมูล ถ้ายังไม่เคยตั้งจึงใช้ค่าตั้งต้นของระบบ */
+  const meta = (d.year_meta && typeof d.year_meta === 'object') ? d.year_meta : {};
   const years = [1, 2, 3, 4].map(y => {
     const ys = YEAR_STAGES.find(s => s.year === y) || {label: 'ชั้นปีที่ ' + y, stage: '', target: 3};
+    const m = meta[String(y)] || {};
     const config = {};
     comps.forEach((c, ci) => {
       const cf = cfgBy[y + '|' + c.id];
@@ -7210,7 +7374,9 @@ function applyFramework(d) {
       config[c.id] = {
         active: cf ? cf.is_active !== false : list.length > 0,
         target: cf ? numOr(cf.target_level, ys.target) : ys.target,
-        test: {open: cf ? !!cf.exam_open : false, n: cf ? (numOr(cf.exam_items, 30) || 30) : 30, min: 45},
+        test: {open: cf ? !!cf.exam_open : false,
+               n: cf ? (numOr(cf.exam_items, ITEMS_PER_COMP_DEF) || ITEMS_PER_COMP_DEF) : ITEMS_PER_COMP_DEF,
+               min: cf ? (numOr(cf.exam_minutes, EXAM_MIN_DEF) || EXAM_MIN_DEF) : EXAM_MIN_DEF},
         indicators: list.map(i => ({
           id: i.ind_id,
           th: i.text || '',
@@ -7229,7 +7395,7 @@ function applyFramework(d) {
         })),
       };
     });
-    return {year: y, label: ys.label, stage: ys.stage, config};
+    return {year: y, label: m.label || ys.label, stage: m.stage || ys.stage, config};
   });
 
   /* เก็บเวอร์ชันกรอบสมรรถนะจากเซิร์ฟเวอร์ไว้กำกับเอกสารทุกฉบับ */
@@ -7682,18 +7848,17 @@ async function liveLogin(email, pw) {
 
 
 /*───────── 21.9 การออกจากระบบ ─────────*/
-async function liveLogout() {
+function liveLogout() {
 
   const token = API.token;
+  const who = (S.user && S.user.name) ? ' · ' + S.user.name : '';
 
-  /* แจ้งเซิร์ฟเวอร์ให้ยกเลิกโทเคนก่อน เพราะ auth.logout ต้องอ่านโทเคนจากคำขอ
-     หากล้าง API.token ทิ้งก่อน เซสชันในชีต Sessions จะค้างอยู่จนหมดอายุเอง */
-  if (token) {
-    try { await API.call('auth.logout', {token: token}); }
-    catch (e) { console.warn('[PTRU] logout:', e); }
-  }
+  /* แจ้งผู้ใช้ทันทีที่กด เดิมไม่มีสัญญาณใดเลยระหว่างรอเซิร์ฟเวอร์ตอบ ผู้ใช้จึงกดซ้ำ */
+  toast('⏳ กำลังออกจากระบบ' + who + '…', 'wait', true);
 
-  /* ตัด Session ฝั่ง UI */
+  /* ตัด Session ฝั่ง UI ทันที ไม่รอเซิร์ฟเวอร์
+     เดิม await auth.logout ก่อน ทำให้ค้างอยู่หลายวินาทีทั้งที่งานฝั่งผู้ใช้จบไปแล้ว
+     การเพิกถอนโทเคนส่งตามไปเบื้องหลัง โดยแนบโทเคนที่เก็บไว้ก่อนล้างค่า */
   API.token = null;
   LIVE.session = false;
 
@@ -7712,6 +7877,17 @@ async function liveLogout() {
   S.page = 'dashboard';
 
   render();
+  /* หน่วงข้อความสำเร็จไว้ครู่หนึ่ง ไม่ใช่เพื่อรออะไร แต่เพราะทั้งฟังก์ชันจบในไม่กี่มิลลิวินาที
+     ถ้าแจ้งผลทันทีจะทับข้อความ กำลังออกจากระบบ ในเฟรมเดียวกันจนผู้ใช้อ่านไม่ทัน */
+  setTimeout(() => toast('ออกจากระบบเรียบร้อยแล้ว', 'ok'), LOGOUT_NOTICE_MS);
+
+  /* auth.logout ต้องอ่านโทเคนจากคำขอ หากไม่แจ้ง เซสชันในชีต Sessions จะค้างจนหมดอายุเอง
+     ส่งแบบไม่รอผล เพราะหน้าจอกลับไปหน้าเข้าสู่ระบบเรียบร้อยแล้ว */
+  if (token) {
+    Promise.resolve()
+      .then(() => API.call('auth.logout', {token: token}))
+      .catch(e => console.warn('[PTRU] logout:', e));
+  }
 }
 /*───────── 21.9ก. รูปประจำตัว ─────────*/
 /** ส่งรูปที่ย่อแล้ว (data URL ขนาด 256 พิกเซล) ขึ้นที่จัดเก็บไฟล์ของระบบ
@@ -8126,8 +8302,74 @@ document.addEventListener('click', e => {
   }
 });
 
+/*───────── 21.12ก. บันทึกกรอบสมรรถนะลงฐานข้อมูล ─────────
+   เดิมหน้าตั้งค่ากรอบสมรรถนะแก้ได้แต่ในหน่วยความจำของเบราว์เซอร์เท่านั้น
+   พอรีเฟรชหน้าหรือผู้ประเมินคนอื่นเปิดดู ค่าก็กลับไปเป็นของเดิม
+   จึงดูเหมือนตั้งค่าไม่ได้จริง ทั้งที่ฝั่งเซิร์ฟเวอร์มีเส้นทางบันทึกครบอยู่แล้วแต่ไม่เคยถูกเรียก */
+let LIVE_CFGTIMER = null, LIVE_INDTIMER = {}, LIVE_COMPTIMER = {};
+
+/** บันทึกการตั้งค่าทั้งชั้นปีลงฐานข้อมูล ส่งทุกสมรรถนะไปพร้อมกันในคำขอเดียว
+    เพราะผู้ดูแลมักแก้หลายช่องติดกัน การหน่วงเวลาไว้จึงยิงคำขอครั้งเดียวหลังพิมพ์จบ
+    delay = 0 ใช้กับการกระทำที่จบในครั้งเดียว เช่น คัดลอกจากชั้นปีอื่น */
+function saveYearCfg(year, delay) {
+  if (!liveOn()) return;
+  const y = year || S.year;
+  clearTimeout(LIVE_CFGTIMER);
+  LIVE_CFGTIMER = setTimeout(() => {
+    const yc = yearOf(FW, y);
+    const items = FW.competencies.map(c => {
+      const cf = cfgEdit(y, c.id);
+      return {year: y, comp_id: c.id, is_active: !!cf.active, target_level: cf.target,
+              exam_open: !!(cf.test && cf.test.open),
+              exam_items: (cf.test && cf.test.n) || ITEMS_PER_COMP_DEF,
+              exam_minutes: (cf.test && cf.test.min) || EXAM_MIN_DEF};
+    });
+    livePush('yearcfg.save',
+      {items: items, year_meta: {year: y, label: yc.label, stage: yc.stage}},
+      `บันทึกการตั้งค่า${yc.label}ลงฐานข้อมูลแล้ว · เปิดใช้ ${items.filter(i => i.is_active).length} สมรรถนะ`);
+  }, delay === undefined ? 800 : delay);
+}
+
+/** บันทึกสมรรถนะหลักหนึ่งรายการ (ชื่อ รหัส หมวด PTRU) */
+function saveComp(c) {
+  if (!liveOn() || !c) return;
+  clearTimeout(LIVE_COMPTIMER[c.id]);
+  LIVE_COMPTIMER[c.id] = setTimeout(() => {
+    livePush('comp.save', {comp_id: c.id, code: c.code, name_th: c.th, name_en: c.en,
+      ptru: c.ptru, seq: FW.competencies.findIndex(x => x.id === c.id) + 1},
+      'บันทึกสมรรถนะหลักลงฐานข้อมูลแล้ว');
+  }, 800);
+}
+
+/** บันทึกตัวชี้วัดหนึ่งข้อพร้อมเกณฑ์การประเมินทุกระดับ
+    descriptors ส่งเป็นวัตถุที่คีย์คือลำดับระดับ ให้ตรงกับที่ api_indSave รอรับ */
+function saveInd(y, cid, ind, quiet) {
+  if (!liveOn() || !ind) return;
+  clearTimeout(LIVE_INDTIMER[ind.id]);
+  LIVE_INDTIMER[ind.id] = setTimeout(() => {
+    const cf = cfgEdit(y, cid);
+    const desc = {};
+    (ind.descriptors || []).forEach((d, k) => { desc[k + 1] = d; });
+    /* ตัวชี้วัดที่สร้างในหน้าเว็บมีรหัสชั่วคราวแบบ I1 I2 ซึ่งฐานข้อมูลไม่รู้จัก
+       ส่งรหัสว่างไปแทน เซิร์ฟเวอร์จะสร้างระเบียนใหม่แล้วคืนรหัสจริงกลับมาให้ผูกไว้ */
+    const known = /-/.test(String(ind.id));
+    livePush('ind.save', {ind_id: known ? ind.id : '',
+      year: y, comp_id: cid, seq: cf.indicators.findIndex(x => x.id === ind.id) + 1,
+      text: ind.th, irt_a: ind.irt.a, irt_b: ind.irt.b,
+      cdm_g: ind.cdm.g, cdm_s: ind.cdm.s, q_vector: ind.q, descriptors: desc},
+      quiet ? '' : 'บันทึกตัวชี้วัดและเกณฑ์การประเมินลงฐานข้อมูลแล้ว',
+      r => { if (r && r.ind_id && r.ind_id !== ind.id) ind.id = r.ind_id; });
+  }, 800);
+}
+
+/** บันทึกตัวชี้วัดทั้งชุดของสมรรถนะหนึ่ง ใช้หลังสร้างจากแม่แบบหรือสร้างคำอธิบายอัตโนมัติ */
+function saveIndSet(y, cid) {
+  if (!liveOn()) return;
+  const cf = cfgEdit(y, cid);
+  cf.indicators.forEach((i, n) => setTimeout(() => saveInd(y, cid, i, n > 0), n * 60));
+}
+
 /*───────── 21.13 การเปลี่ยนค่าในกล่องเลือก ─────────*/
-let LIVE_CFGTIMER = null;
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-act]');
   if (!el || !liveOn()) return;
@@ -8147,19 +8389,9 @@ document.addEventListener('change', e => {
     return;
   }
   /* หมายเหตุ avatarup จัดการรวมอยู่ในตัวจัดการหลัก แล้วเรียก uploadAvatar()
-     เพื่อให้ส่งขึ้น Drive เฉพาะรูปที่ย่อเหลือ 256 พิกเซลแล้ว ไม่ใช่ไฟล์ต้นฉบับจากกล้อง */
-  if (['fwactive', 'fwtarget', 'fwtest'].includes(a)) {  // บันทึกการตั้งค่ารายชั้นปีแบบหน่วงเวลา
-    clearTimeout(LIVE_CFGTIMER);
-    const year = S.year;
-    LIVE_CFGTIMER = setTimeout(() => {
-      const items = FW.competencies.map(c => {
-        const cf = cfgOf(FW, year, c.id);
-        return {year, comp_id: c.id, is_active: !!cf.active, target_level: cf.target,
-                exam_open: !!(cf.test && cf.test.open), exam_items: (cf.test && cf.test.n) || 0};
-      });
-      livePush('yearcfg.save', {items}, 'บันทึกการตั้งค่ากรอบสมรรถนะรายชั้นปีลงฐานข้อมูลแล้ว');
-    }, 900);
-  }
+     เพื่อให้ส่งขึ้น Drive เฉพาะรูปที่ย่อเหลือ 256 พิกเซลแล้ว ไม่ใช่ไฟล์ต้นฉบับจากกล้อง
+     ส่วนการตั้งค่ากรอบสมรรถนะรายชั้นปี ตัวจัดการของแต่ละช่องเรียก saveYearCfg() เองแล้ว
+     จึงครอบคลุมทั้งช่องที่เป็น select, checkbox และช่องพิมพ์ตัวเลข ไม่ใช่เฉพาะ change */
 }, false);
 
 /*───────── 21.13ข. ติดตั้งระบบและเติมข้อมูลจากหน้าเว็บ ─────────*/
