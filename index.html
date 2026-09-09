@@ -1281,7 +1281,7 @@ function lineSVG(labels,series,max,target){
     <text x="${X(i).toFixed(1)}" y="${(Y(v)-10).toFixed(1)}" font-size="11" fill="var(--text)" text-anchor="middle">${fmt(v)}</text>`).join("");
   const xl=labels.map((l,i)=>`<text x="${X(i).toFixed(1)}" y="${H-8}" font-size="11" fill="var(--muted)" text-anchor="middle">${esc(l)}</text>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="แนวโน้มคะแนนเฉลี่ย">
-    ${grid}${tg}<path d="${d}" fill="none" stroke="var(--c1)" stroke-width="3"/>${dots}${xl}</svg>`;
+    ${grid}${tg}<path d="${d}" fill="none" stroke="var(--ai-blue)" stroke-width="3"/>${dots}${xl}</svg>`;
 }
 
 /** เรดาร์หลายชุดข้อมูล ใช้เปรียบเทียบผลหลายรอบบนแกนเดียวกัน */
@@ -1962,6 +1962,23 @@ function deepPanel(y){
 }
 
 /* ---------- 16. รายงานวินิจฉัยรายบุคคล ---------- */
+/** แถบประจำตัวนักศึกษาพร้อมรูป ใช้หัวรายงานรายบุคคลทุกฉบับ
+    รูปดึงผ่าน photoSrc เพื่อแปลงลิงก์ Google Drive ให้แสดงเป็นรูปได้จริง
+    ถ้าไม่มีรูปหรือโหลดไม่สำเร็จ จะแสดงอักษรย่อแทน */
+function studentChip(st,extra){
+  const init=esc((st.name||"?").trim().charAt(0));
+  const src=photoSrc(st.photo);
+  return `<div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
+    <div class="avatar${st.photo?" hasimg":""}" style="width:3.2rem;height:3.2rem;font-size:1.3rem;flex:none">
+      ${src?`<img src="${esc(src)}" alt="รูปประจำตัวของ ${esc(st.name)}" onerror="this.remove()">`:init}</div>
+    <div style="min-width:0">
+      <div style="font-weight:600;font-size:1rem;line-height:1.3">${esc(st.name)}</div>
+      <div class="sub">รหัส ${esc(st.code||"—")} · ${esc(st.program||"—")} ${esc(progName(st.program))}
+        · ${esc(yearOf(FW,st.year).label)}${st.school?" · "+esc(st.school):""}</div>
+      ${extra?`<div class="sub" style="margin-top:.15rem">${extra}</div>`:""}
+    </div></div>`;
+}
+
 function diagnosticPage(){
   const stu=filteredStudents();
   if(!stu.length) return card("รายงานวินิจฉัย","",`<div class="empty">ยังไม่มีนักศึกษาในระบบ</div>`);
@@ -1981,14 +1998,17 @@ function diagnosticPage(){
   else if(S.dxTab==="gdina") body=gdinaPanel(A);
   else if(S.dxTab==="edm") body=edmPanel(A,st,lb);
   else body=deepPanel(A.year);
-  return `<div class="stack">${filterBar()}
-    ${card("รายงานวินิจฉัยรายบุคคล",`${esc(st.name)} · ${st.program} ${esc(progName(st.program))} · ${yearOf(FW,A.year).label}`,
-      `<div class="grid g4" style="gap:.7rem;align-items:end">${sel}
+  /* นักศึกษาเห็นเฉพาะของตนเอง จึงไม่ต้องมีตัวกรองชั้นปีและสาขา */
+  const bar=S.role==="Student"?"":filterBar();
+  return `<div class="stack">${bar}
+    ${card("รายงานวินิจฉัยรายบุคคล","",
+      `${studentChip(st)}
+       <div class="grid g4" style="gap:.7rem;align-items:end;margin-top:.9rem">${sel}
         ${stat("ตัวชี้วัดที่มีข้อมูล",A.nItems,`${A.comps.length} สมรรถนะที่เปิดใช้`)}
         ${stat("ค่าสมรรถนะรวม θ",A.irt?fmt(A.irt.theta):"—",A.irt?`SE ${fmt(A.irt.se)}`:"")}
-        ${stat("ความเสี่ยงไม่ผ่านเกณฑ์",Math.round(A.edm.risk*100)+"%",lb)}</div>`,
-      `<button class="btn btn-ghost btn-sm" data-act="noop">ส่งออกเป็น PDF</button>`)}
-    <div class="tabs">${tabs}</div>${body}</div>`;
+        ${stat("ความเสี่ยงไม่ผ่านเกณฑ์",Math.round(A.edm.risk*100)+"%",lb)}</div>`)}
+    <div class="tabs">${tabs}</div>${body}
+    <div class="notebox">${docStamp()}</div></div>`;
 }
 function irtPanel(A){
   if(!A.irt) return card("IRT","",`<div class="empty">ยังไม่มีข้อมูลการประเมินสำหรับผู้เรียนรายนี้</div>`);
@@ -2139,14 +2159,14 @@ function progressPage(){
   const trend = gain>0.15?"ก้าวหน้าขึ้น":gain<-0.15?"ลดลง":"คงที่";
   const trendTag = gain>0.15?"tag-ok":gain<-0.15?"tag-risk":"tag-warn";
 
-  return `<div class="stack">${filterBar()}
-    ${card("รายงานความก้าวหน้ารายบุคคล",
-      `${esc(st.name)} · ${st.program} ${esc(progName(st.program))} · ${yearOf(FW,y).label} · ภาคการศึกษา 1/2569`,
-      `<div class="grid g4" style="gap:.7rem;align-items:end">${sel}
+  /* นักศึกษาเห็นเฉพาะของตนเอง จึงไม่ต้องมีตัวกรองชั้นปีและสาขา */
+  return `<div class="stack">${S.role==="Student"?"":filterBar()}
+    ${card("รายงานความก้าวหน้ารายบุคคล","",
+      `${studentChip(st,`${rounds.length} รอบการประเมิน · ภาคการศึกษา ${(typeof LIVE_CFG!=="undefined"&&LIVE_CFG.term)||"1/2569"}`)}
+       <div class="grid g4" style="gap:.7rem;align-items:end;margin-top:.9rem">${sel}
         ${stat("ระดับปัจจุบัน","ระดับที่ "+curLv,FW.levels[curLv-1].th+" · "+FW.levels[curLv-1].en)}
         ${stat("คะแนนเฉลี่ยล่าสุด",fmt(cur),`เป้าหมายเฉลี่ยของชั้นปี ${fmt(targetAvg,1)}`)}
-        ${stat("การเปลี่ยนแปลงจากรอบแรก",(gain>=0?"+":"")+fmt(gain),`<span class="tag ${trendTag}">${trend}</span>`)}</div>`,
-      `<button class="btn btn-ghost btn-sm" data-act="noop">ส่งออกเป็น PDF</button>`)}
+        ${stat("การเปลี่ยนแปลงจากรอบแรก",(gain>=0?"+":"")+fmt(gain),`<span class="tag ${trendTag}">${trend}</span>`)}</div>`)}
 
     ${card("ตำแหน่งบนเส้นทางพัฒนาสมรรถนะ","ระดับคำนวณจากคะแนนเฉลี่ยของสมรรถนะที่เปิดใช้ในชั้นปีนี้",
       ladderStrip(curLv)+`<p class="hint" style="margin-top:.8rem">
@@ -3727,13 +3747,67 @@ function nrm(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng();
   return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
 
 let PILOT=null;
-const pilot=()=>PILOT||(PILOT=buildPilot());
+
+/** เมทริกซ์การตอบจากการสอบจริงของนักศึกษา สร้างจาก item_results ที่ชีต ExamAnswers บันทึกไว้
+    หนึ่งแถวคือผู้สอบหนึ่งคน หนึ่งคอลัมน์คือข้อสอบหนึ่งข้อตามลำดับใน BANK
+    ข้อที่ผู้สอบคนนั้นไม่ได้ทำจะถูกทำเครื่องหมายไว้ใน mask เพื่อไม่ให้นับเป็นตอบผิด */
+function realPilot(){
+  const idx=new Map(BANK.map((it,j)=>[String(it.id),j]));
+  const rows=[], masks=[];
+  const seen={};
+  EXAM_RESULTS.forEach(r=>{
+    const items=Array.isArray(r.itemResults)?r.itemResults:[];
+    if(!items.length) return;
+    const key=r.sid+"|"+r.comp;
+    if(seen[key]) return; seen[key]=1;          // ใช้ครั้งล่าสุดของแต่ละคนต่อสมรรถนะ
+    const row=new Uint8Array(BANK.length), mask=new Uint8Array(BANK.length);
+    let hit=0;
+    items.forEach(x=>{
+      const j=idx.get(String(x.item_id)); if(j===undefined) return;
+      row[j]=x.is_correct?1:0; mask[j]=1; hit++;
+    });
+    if(hit){ rows.push(row); masks.push(mask); }
+  });
+  return {resp:rows, mask:masks, real:true, n:rows.length};
+}
+/** จำนวนผู้สอบจริงขั้นต่ำที่ยอมให้ใช้วิเคราะห์คุณภาพข้อสอบ
+    ต่ำกว่านี้ค่าประมาณจะแกว่งจนสรุปไม่ได้ ระบบจึงถอยไปใช้ข้อมูลจำลองพร้อมระบุกำกับไว้ */
+const REAL_ITEM_MIN_N=30;
+let PILOT_SRC="sim";
+function pilot(){
+  if(PILOT) return PILOT;
+  const real=realPilot();
+  if(real.n>=REAL_ITEM_MIN_N){ PILOT_SRC="real"; return (PILOT=real); }
+  PILOT_SRC="sim";
+  return (PILOT=buildPilot());
+}
+/** ป้ายบอกที่มาของข้อมูลที่ใช้วิเคราะห์คุณภาพข้อสอบ แสดงบนทุกแท็บที่ใช้ข้อมูลชุดนี้ */
+function itemDataNote(){
+  const real=realPilot();
+  if(PILOT_SRC==="real")
+    return `<div class="notebox">วิเคราะห์จาก<b>ผลการสอบจริง</b> ${real.n} ชุดคำตอบ ที่บันทึกไว้ในชีต ExamAnswers</div>`;
+  return `<div class="notebox">ขณะนี้มีผลการสอบจริงเพียง ${real.n} ชุด (ต้องมีอย่างน้อย ${REAL_ITEM_MIN_N} ชุด)
+    ระบบจึงวิเคราะห์จาก<b>ข้อมูลจำลอง</b>ตามพารามิเตอร์ที่ตั้งไว้ของแต่ละข้อ
+    ค่าที่ได้ใช้ตรวจสอบโครงสร้างของข้อสอบได้ แต่ยังไม่ใช่คุณภาพจริงของข้อสอบชุดนี้
+    ผลจะเปลี่ยนเป็นข้อมูลจริงอัตโนมัติเมื่อมีผู้สอบครบตามจำนวน</div>`;
+}
+
+/** แถวคำตอบที่ใช้ได้กับชุดข้อสอบที่ระบุ
+    ข้อมูลจริงคัดเฉพาะผู้ที่ทำครบทุกข้อในชุดนั้น (complete case) ค่าสถิติจึงเทียบกันได้
+    ข้อมูลจำลองใช้ได้ทุกแถวอยู่แล้ว เพราะสร้างให้ตอบครบทุกข้อ */
+function pilotRows(cols){
+  const P=pilot();
+  if(!P.mask) return P.resp;
+  return P.resp.filter((r,i)=>cols.every(j=>P.mask[i][j]));
+}
 
 /* ---------- CTT: ทฤษฎีการทดสอบแบบดั้งเดิม ---------- */
 function cttAnalyze(cid){
-  const P=pilot(), items=bankOf(cid);
+  const items=bankOf(cid);
   const cols=items.map(it=>BANK.indexOf(it));
+  const P={resp:pilotRows(cols)};
   const n=P.resp.length;
+  if(n<3) return {rows:[],n:0,kr20:null,mean:null,sd:null,insufficient:true};
   const total=P.resp.map(r=>cols.reduce((a,j)=>a+r[j],0));
   const mt=mean(total), st=sdev(total)||1;
   const rows=items.map((it,k)=>{
@@ -3773,7 +3847,8 @@ const QW=QX.map(t=>Math.exp(-t*t/2));
 function irtCalibrate(cid,iters,model){
   model=model||"4pl";
   const freeC=(model!=="2pl"), freeD=(model==="4pl");
-  const P=pilot(), items=bankOf(cid), cols=items.map(it=>BANK.indexOf(it));
+  const items=bankOf(cid), cols=items.map(it=>BANK.indexOf(it));
+  const P={resp:pilotRows(cols)};          // ใช้เฉพาะผู้ที่ทำครบทุกข้อในชุดนี้
   const N=P.resp.length, J=items.length;
   let a=items.map(()=>1.0), b=items.map(()=>0.0),
       c=items.map(()=>freeC?GUESS_C:0), d=items.map(()=>freeD?0.97:1);
@@ -3881,8 +3956,12 @@ function mirtAnalyze(){
 const DIM=12, SEQLEN=30;
 
 /** สร้างลำดับการตอบ: ผู้สอบหนึ่งคนต่อหนึ่งสมรรถนะ = ลำดับ 30 ข้อ */
+/* แบบจำลองลำดับการเรียนรู้ต้องการลำดับการตอบที่ยาวและครบทุกข้อ
+   ผลการสอบจริงยังสั้นเกินไปและมีข้อที่ผู้สอบไม่ได้ทำ จึงใช้ชุดจำลองเฉพาะส่วนนี้
+   ถ้าใช้เมทริกซ์จริงที่มีช่องว่าง ข้อที่ไม่ได้ทำจะถูกนับเป็นตอบผิดและทำให้ผลเพี้ยน */
+let PILOT_SIM=null;
 function seqData(limitTrain,limitTest){
-  const P=pilot(), all=[];
+  const P=PILOT_SIM||(PILOT_SIM=buildPilot()), all=[];
   const idxOf=new Map(BANK.map((it,j)=>[it.id,j]));
   P.resp.forEach((row,e)=>{
     FW.competencies.forEach((c,ci)=>{
@@ -4078,7 +4157,7 @@ function iccSVG(a,b){
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="เส้นโค้งลักษณะข้อสอบ">
     <line x1="${padL}" y1="${Y(.5).toFixed(1)}" x2="${W-14}" y2="${Y(.5).toFixed(1)}" stroke="var(--line-soft)"/>
     <line x1="${X(b).toFixed(1)}" y1="${padT}" x2="${X(b).toFixed(1)}" y2="${H-padB}" stroke="var(--accent)" stroke-dasharray="4 3"/>
-    <path d="${d}" fill="none" stroke="var(--c1)" stroke-width="3"/>${ax}
+    <path d="${d}" fill="none" stroke="var(--ai-blue)" stroke-width="3"/>${ax}
     <text x="${(W/2)}" y="${H-1}" font-size="10" fill="var(--muted)" text-anchor="middle">ค่าความสามารถ θ</text></svg>`;
 }
 function infoSVG(info){
@@ -4107,10 +4186,10 @@ function itemQualityPage(){
   else if(S.iqTab==="items") body=iqItemsView(c);
   else body=iqCttView(c);
   return `<div class="stack">
-    <div class="notebox">คุณภาพข้อสอบวิเคราะห์จากการทดลองใช้กับผู้สอบจำลอง ${PILOT_N} คน ครบทั้ง ${BANK.length} ข้อ
-      ข้อความโจทย์ในคลังเป็นแม่แบบสำหรับต้นแบบ ต้องแทนที่ด้วยข้อสอบจริงที่ผ่านการตรวจความตรงเชิงเนื้อหาก่อนใช้กับนักศึกษา</div>
+    ${itemDataNote()}
     ${card("คุณภาพข้อสอบวัดสมรรถนะ",`${c.code} · ${esc(c.th)} · ${bankOf(c.id).length} ข้อ · ${N_CHOICE} ตัวเลือก`,sel)}
-    <div class="tabs">${tabs}</div>${body}</div>`;
+    <div class="tabs">${tabs}</div>${body}
+    <div class="notebox">${docStamp("ที่มา: "+(PILOT_SRC==="real"?"ชีต ExamAnswers":"ข้อมูลจำลองตามพารามิเตอร์ของข้อสอบ"))}</div></div>`;
 }
 function iqCttView(c){
   const A=iqCTT(c.id);
@@ -4314,7 +4393,6 @@ function examItemsFor(sid,cid,nItems){
 }
 
 async function startExamFromServer(cid){
-  LIVE.statusClosed = false;
   const me=myUser(), y=me.year;
   if(!me || !me.id || !y || !cid) return;
   S.examComp=cid; S.examAns={}; S.examItems=[]; S.examAttemptId=null; S.examDone=false; S.examQ=0; S.examBusy=true; S.examDbSaved=false; S.err=""; LIVE.info="กำลังตรวจสอบบัญชีกับเซิร์ฟเวอร์…"; render();
@@ -4368,7 +4446,6 @@ function examPage(){
 }
 
 async function examSubmit(){
-  LIVE.statusClosed = false;
   const me=myUser(),y=me.year,cid=S.examComp,cfg=cfgOf(FW,y,cid).test||{n:30},items=examItemsFor(me.id,cid,cfg.n);
   if(!items.length)return;
   const unanswered=items.filter(it=>S.examAns[it.id]===undefined); if(unanswered.length){S.examQ=items.findIndex(it=>S.examAns[it.id]===undefined);S.err=`กรุณาตอบให้ครบทุกข้อ ยังเหลือ ${unanswered.length} ข้อ`;render();return;}
@@ -4497,19 +4574,34 @@ const EDM_FEATNAMES=["คะแนนเฉลี่ยรอบที่ 1","�
   "สมรรถนะต่ำสุดรอบที่ 2","สัดส่วนสมรรถนะต่ำกว่าเป้าหมายรอบที่ 2","ความครบถ้วนของหลักฐาน","การส่งงานตรงเวลา"];
 
 /** ชุดข้อมูล: ใช้ข้อมูลถึงกลางภาคทำนายผลปลายภาค เพื่อเลี่ยงการรั่วไหลของตัวแปรเป้าหมาย */
+/** ความครบถ้วนของแฟ้มสะสมงานจากข้อมูลจริง = สัดส่วนหลักฐานที่ผ่านการตรวจสอบแล้ว
+    คืนค่า null เมื่อยังไม่มีหลักฐานของผู้เรียนรายนั้นในระบบ เพื่อให้แยกออกจากค่าศูนย์จริง */
+function evidenceRate(sid){
+  const list=EVIDENCE.filter(e=>e.student===sid);
+  if(!list.length) return null;
+  return list.filter(e=>e.status==="verified").length/list.length;
+}
+/** ชุดข้อมูลสำหรับแบบจำลองทำนายความเสี่ยง สร้างจากผลการประเมินจริงทุกรอบที่บันทึกไว้
+    ใช้รอบแรก รอบรองสุดท้าย และรอบสุดท้ายเป็นตัวแปร จึงรองรับผู้เรียนที่มีจำนวนรอบไม่เท่ากัน
+    เดิมบังคับต้องมีครบ 3 รอบพอดี ผู้เรียนที่มี 2 หรือ 4 รอบจะถูกตัดออกจากการวิเคราะห์ทั้งหมด */
 function edmDataset(){
   const rows=[];
   filteredStudents().forEach(s=>{
     const y=s.year, comps=activeComps(FW,y), h=HIST[s.id];
-    if(!h||!comps.length) return;
-    const at=ri=>comps.map(c=>scoreFromResp(h[ri].resp,c,y)).filter(v=>v!==null);
-    const a1=at(0), a2=at(1), a3=at(2);
+    if(!h||h.length<2||!comps.length) return;
+    const at=r=>comps.map(c=>scoreFromResp(r.resp,c,y)).filter(v=>v!==null);
+    const last=h[h.length-1], prev=h[h.length-2], first=h[0];
+    const a1=at(first), a2=at(prev), a3=at(last);
     if(!a1.length||!a2.length||!a3.length) return;
     const tg=mean(comps.map(c=>cfgOf(FW,y,c.id).target));
-    const below2=comps.filter(c=>{const v=scoreFromResp(h[1].resp,c,y);
+    const below2=comps.filter(c=>{const v=scoreFromResp(prev.resp,c,y);
       return v!==null&&v<cfgOf(FW,y,c.id).target;}).length/comps.length;
-    rows.push({id:s.id,name:s.name,code:s.code,program:s.program,year:y,
-      x:[mean(a1),mean(a2),mean(a2)-mean(a1),Math.min(...a2),below2,s.evidence||0,s.ontime||0],
+    /* ตัวแปรพฤติกรรมใช้ข้อมูลจริงเมื่อมี มิฉะนั้นใช้ค่ากลาง 0.5 และระบุกำกับไว้บนหน้าจอ */
+    const ev=evidenceRate(s.id);
+    rows.push({id:s.id,name:s.name,code:s.code,program:s.program,year:y,photo:s.photo,
+      rounds:h.length, evReal:ev!==null,
+      x:[mean(a1),mean(a2),mean(a2)-mean(a1),Math.min(...a2),below2,
+         ev!==null?ev:featOr(s.evidence),featOr(s.ontime)],
       y: mean(a3)<tg?1:0, m1:mean(a1), m2:mean(a2), m3:mean(a3), tg, below2});
   });
   return rows;
@@ -4732,7 +4824,7 @@ function predCurveSVG(cache){
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="เส้นโค้งการทำนายของ Logistic Regression">
     ${grid}<line x1="${padL}" y1="${Y(0.5).toFixed(1)}" x2="${W-16}" y2="${Y(0.5).toFixed(1)}" stroke="var(--accent)" stroke-dasharray="5 3"/>
     <text x="${W-18}" y="${(Y(0.5)-5).toFixed(1)}" font-size="10" fill="var(--accent)" text-anchor="end">เกณฑ์ตัดสิน 50%</text>
-    <path d="${d}" fill="none" stroke="var(--c1)" stroke-width="3"/>${dots}${xt}
+    <path d="${d}" fill="none" stroke="var(--ai-blue)" stroke-width="3"/>${dots}${xt}
     <text x="${(W/2).toFixed(0)}" y="${H-2}" font-size="10" fill="var(--muted)" text-anchor="middle">คะแนนเฉลี่ยรอบที่ 2 (กลางภาค)</text></svg>`;
 }
 function confusionHTML(m){
@@ -4768,9 +4860,14 @@ function edmPage(){
     : (m.deep ? edmDeepPanel(m,cache) : edmResult(cache,m));
 
   return `<div class="stack">${filterBar()}
-    <div class="notebox">ตัวแปรเป้าหมายคือ "คะแนนเฉลี่ยปลายภาคต่ำกว่าระดับเป้าหมายของชั้นปี" ทำนายจากข้อมูลถึงกลางภาคและพฤติกรรมการส่งงาน
+    <div class="notebox">ตัวแปรเป้าหมายคือ "คะแนนเฉลี่ยรอบสุดท้ายต่ำกว่าระดับเป้าหมายของชั้นปี"
+      ทำนายจากผลการประเมินจริงของรอบแรกถึงรอบรองสุดท้ายที่ผู้ประเมินบันทึกไว้
       ค่าประสิทธิภาพทั้งหมดมาจากการตรวจสอบไขว้แบบ leave-one-out ไม่ใช่ความแม่นยำบนข้อมูลที่ใช้ฝึก
-      อย่างไรก็ตามกลุ่มตัวอย่างมีเพียง ${cache.rows.length} คน ค่าที่ได้จึงมีความผันแปรสูงและยังไม่ควรใช้ตัดสินผู้เรียนรายบุคคล</div>
+      อย่างไรก็ตามกลุ่มตัวอย่างมีเพียง ${cache.rows.length} คน ค่าที่ได้จึงมีความผันแปรสูงและยังไม่ควรใช้ตัดสินผู้เรียนรายบุคคล
+      ${(()=>{const r=cache.rows.filter(o=>o.evReal).length;
+        return r===cache.rows.length?"<br>ตัวแปรความครบถ้วนของแฟ้มสะสมงานใช้ข้อมูลจริงครบทุกคน"
+          :`<br>ตัวแปรความครบถ้วนของแฟ้มสะสมงานใช้ข้อมูลจริง ${r} จาก ${cache.rows.length} คน ที่เหลือใช้ค่ากลาง 0.5 แทน
+             ส่วนตัวแปรการส่งงานตรงเวลายังไม่มีในฐานข้อมูล จึงใช้ค่ากลางทั้งหมด`;})()}</div>
     ${summary}
     <div class="row"><button class="btn btn-primary" style="width:auto;margin-top:0" data-act="edmcompare">เปรียบเทียบประสิทธิภาพทุกโมเดล</button>
       ${S.edmCompare?`<button class="btn btn-ghost btn-sm" data-act="edmback">กลับไปดูผลรายโมเดล</button>`:""}
@@ -5236,7 +5333,8 @@ function fairnessBy(cache,id,keyFn,labelFn){
 }
 /** Mantel-Haenszel DIF รายข้อ พร้อมการจัดระดับตามเกณฑ์ ETS */
 function difAnalysis(cid){
-  const P=pilot(), items=bankOf(cid), cols=items.map(it=>BANK.indexOf(it));
+  const items=bankOf(cid), cols=items.map(it=>BANK.indexOf(it));
+  const P={resp:pilotRows(cols)};          // ใช้เฉพาะผู้ที่ทำครบทุกข้อในชุดนี้
   const N=P.resp.length;
   /* กลุ่มอ้างอิงและกลุ่มเปรียบเทียบกำหนดแบบสุ่มโดยไม่มีความแตกต่างจริง
      ใช้เพื่อยืนยันว่ากลไกตรวจ DIF ไม่แจ้งผลบวกลวงเกินสมควร */
@@ -5462,12 +5560,33 @@ function xaiGov(){
    ============================================================ */
 const IRR_MIN_N=20;   // จำนวนคู่คะแนนขั้นต่ำที่ยอมให้สรุปผลรายบุคคล
 
-/** จับคู่ผู้ประเมินของนักศึกษาแต่ละคน: อาจารย์นิเทศก์และครูพี่เลี้ยงของสาขานั้น */
+/** ผู้ประเมินจริงของนักศึกษาคนหนึ่งในช่องทางหนึ่ง อ่านจากระเบียน ASSESS_LOG
+    เดิมฟังก์ชันนี้เดาโดยหยิบผู้ที่มีบทบาทนั้นคนแรกในสาขา ทำให้สถิติรายผู้ประเมินผิดคน
+    ตอนนี้ใช้ assessor_id ที่บันทึกไว้จริง และถอยไปใช้การเดาเฉพาะเมื่อไม่มีระเบียน */
 function raterOf(st,kind){
+  const types=kind==="lec"?["lecturer","major"]:["mentor"];
+  const log=(ASSESS_LOG[st.id]||[]).filter(a=>types.includes(a.type)&&a.assessor_id);
+  if(log.length){
+    /* ผู้ที่ประเมินนักศึกษารายนี้บ่อยที่สุดในช่องทางนั้น ถือเป็นผู้ประเมินหลัก */
+    const cnt={};
+    log.forEach(a=>{ cnt[a.assessor_id]=(cnt[a.assessor_id]||0)+1; });
+    const id=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+    const u=userById(id);
+    if(u) return u;
+    const nm=(log.find(a=>a.assessor_id===id)||{}).assessor_name;
+    return {id,name:nm||(kind==="lec"?"อาจารย์นิเทศก์":"ครูพี่เลี้ยง")};
+  }
   const role=kind==="lec"?"Lecturer":"Mentor";
   return USERS.find(u=>!u.linkTo&&u.roles.includes(role)&&u.program===st.program)
       || USERS.find(u=>!u.linkTo&&u.roles.includes(role))
       || {id:"unknown-"+kind,name:kind==="lec"?"อาจารย์นิเทศก์":"ครูพี่เลี้ยง"};
+}
+/** สัดส่วนคู่คะแนนที่ระบุตัวผู้ประเมินได้จากระเบียนจริง ใช้แจ้งความน่าเชื่อถือของสถิติรายผู้ประเมิน */
+function irrTraceable(){
+  const list=filteredStudents();
+  if(!list.length) return {n:0,traced:0};
+  const traced=list.filter(st=>(ASSESS_LOG[st.id]||[]).some(a=>a.assessor_id)).length;
+  return {n:list.length,traced};
 }
 /** คู่คะแนนระดับตัวชี้วัดของฝ่ายอาจารย์นิเทศก์กับฝ่ายครูพี่เลี้ยง ใช้เป็นฐานของสถิติทั้งหมด
     ฝ่ายอาจารย์นิเทศก์คิดจากค่าเฉลี่ยของวิชาชีพครูกับวิชาเอก ให้ตรงกับกติกาคะแนนรวม
@@ -5753,7 +5872,16 @@ function irrPage(){
 }
 function irrSummary(A){
   const [kb,kc]=irrBand(A.kappa), [ib,ic]=irrBand(A.iccCell?A.iccCell.iccK:null);
+  /* บอกให้ชัดว่าสถิติรายผู้ประเมินอ้างอิงตัวผู้ประเมินจากระเบียนจริงได้กี่ราย
+     ผู้เรียนที่ยังไม่มีระเบียนจะใช้การอนุมานจากบทบาทในสาขา ซึ่งเชื่อถือได้น้อยกว่า */
+  const tr=irrTraceable();
+  const traceNote=tr.n
+    ? `<div class="notebox">ระบุตัวผู้ประเมินจากระเบียนจริงได้ ${tr.traced} จาก ${tr.n} คน
+        ${tr.traced<tr.n?`ส่วนที่เหลืออนุมานจากบทบาทในสาขา สถิติรายผู้ประเมินของกลุ่มนั้นจึงใช้เป็นแนวโน้มเท่านั้น`
+          :`สถิติรายผู้ประเมินจึงอ้างอิงผู้ประเมินตัวจริงทั้งหมด`}</div>`
+    : "";
   return `<div class="stack">
+    ${traceNote}
     <div class="grid g4">
       ${stat("คู่คะแนนที่วิเคราะห์",A.n.toLocaleString(),"ระดับตัวชี้วัด รอบล่าสุด")}
       ${stat("ตรงกันพอดี",(A.exact*100).toFixed(1)+"%","ให้ระดับเดียวกัน")}
@@ -5936,6 +6064,239 @@ function view(){
   if(S.screen==="forgot") return forgotView();
   return loginView();
 }
+/* ---------- สไตล์ที่ฉีดเพิ่มจาก JavaScript ----------
+   วางไว้นอกบล็อก style หลัก เพราะเป็นของส่วนที่สร้างจากสคริปต์ทั้งหมด
+   ฉีดครั้งเดียวตอนใช้งานจริง ไม่ต้องแก้ style เดิมของหน้า */
+function ensureAppStyles(){
+  if(document.getElementById("app-dyn-style")) return;
+  const st=document.createElement("style");
+  st.id="app-dyn-style";
+  /* สีน้ำเงินคงที่ ไม่เปลี่ยนตามธีมสีของผู้ใช้ ตามที่กำหนดให้หน้าจอโหลดและปุ่มผู้ช่วยเป็นสีน้ำเงิน */
+  st.textContent=`
+    :root{--ai-blue:#2F6BFF;--ai-blue-dk:#1B3FAA}
+    @keyframes ptru-spin{to{transform:rotate(360deg)}}
+    @keyframes ptru-dash{0%{stroke-dashoffset:0}100%{stroke-dashoffset:-339}}
+    @keyframes ptru-fade{from{opacity:0}to{opacity:1}}
+    @keyframes ptru-pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+    #loadscreen{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+      background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(3px);
+      animation:ptru-fade .18s ease}
+    #loadscreen .box{display:flex;flex-direction:column;align-items:center;gap:.2rem;text-align:center}
+    #loadscreen .ring{position:relative;width:148px;height:148px}
+    #loadscreen .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+    #loadscreen .spin{animation:ptru-spin 1.1s linear infinite;transform-origin:50% 50%}
+    #loadscreen .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-family:'Noto Serif Thai',serif;font-size:1.7rem;font-weight:600;color:var(--ai-blue)}
+    #loadscreen h3{margin:.9rem 0 .1rem;font-size:1.05rem}
+    #loadscreen p{margin:0;font-size:.86rem;color:var(--muted)}
+    #loadscreen .stage{margin-top:.5rem;font-size:.8rem;color:var(--text-soft);min-height:1.2em}
+    /* touch-action:none จำเป็นสำหรับการลากด้วยนิ้ว มิฉะนั้นเบราว์เซอร์จะเลื่อนหน้าแทน */
+    #aiwrap{position:fixed;right:1.15rem;bottom:1.15rem;z-index:260;display:flex;align-items:center;gap:.6rem;
+      cursor:grab;touch-action:none}
+    #aiwrap:active{cursor:grabbing}
+    #aibubble{background:var(--surface);border:1px solid var(--line);border-radius:16px 16px 4px 16px;
+      box-shadow:0 8px 26px rgba(0,0,0,.14);padding:.6rem .9rem;max-width:16rem;font-size:.82rem;
+      line-height:1.55;cursor:pointer;animation:ptru-pop .22s ease;color:var(--text-soft)}
+    #aibubble b{color:var(--text);display:block;font-size:.85rem;margin-bottom:.1rem}
+    #aibtn{width:3.6rem;height:3.6rem;border-radius:50%;border:none;cursor:pointer;flex:none;position:relative;
+      background:linear-gradient(140deg,var(--ai-blue),var(--ai-blue-dk));
+      color:#fff;box-shadow:0 8px 24px rgba(47,107,255,.42);
+      display:flex;align-items:center;justify-content:center;transition:transform .18s,box-shadow .18s}
+    #aibtn:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 12px 30px rgba(47,107,255,.5)}
+    #aibtn .dot{position:absolute;top:.15rem;right:.15rem;width:.72rem;height:.72rem;border-radius:50%;
+      background:#12B886;border:2px solid var(--surface)}
+    #aipanel{position:fixed;right:1.15rem;bottom:1.15rem;z-index:270;width:min(25rem,94vw);
+      height:min(34rem,82vh);display:flex;flex-direction:column;background:var(--surface);
+      border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.26);
+      overflow:hidden;animation:ptru-pop .2s ease}
+    #aipanel .hd{display:flex;align-items:center;gap:.65rem;padding:.85rem 1rem;
+      background:linear-gradient(140deg,var(--ai-blue),var(--ai-blue-dk));color:#fff;flex:none;
+      cursor:grab;touch-action:none;user-select:none}
+    #aipanel .hd:active{cursor:grabbing}
+    #aipanel .hd button{cursor:pointer}
+    #aipanel .hd .av{width:2.2rem;height:2.2rem;border-radius:50%;background:rgba(255,255,255,.18);
+      display:flex;align-items:center;justify-content:center;flex:none}
+    #aipanel .hd b{font-size:.95rem;display:block;line-height:1.25}
+    #aipanel .hd .sub2{font-size:.73rem;opacity:.88;display:flex;align-items:center;gap:.3rem}
+    #aipanel .hd .sub2 i{width:.42rem;height:.42rem;border-radius:50%;background:#5DE8A8;display:inline-block}
+    #aipanel .hd button{margin-left:auto;background:rgba(255,255,255,.14);border:none;color:#fff;
+      cursor:pointer;line-height:0;padding:.42rem;border-radius:9px;display:flex;transition:background .15s}
+    #aipanel .hd button:hover{background:rgba(255,255,255,.28)}
+    #aipanel .tabs2{display:flex;gap:.25rem;padding:.5rem .6rem;border-bottom:1px solid var(--line-soft);
+      overflow-x:auto;background:var(--surface-2);flex:none;scrollbar-width:none}
+    #aipanel .tabs2::-webkit-scrollbar{display:none}
+    #aipanel .tabs2 button{white-space:nowrap;border:1px solid transparent;background:transparent;
+      border-radius:999px;padding:.32rem .7rem;font-size:.78rem;cursor:pointer;color:var(--text-soft);
+      display:flex;align-items:center;gap:.3rem;transition:all .15s}
+    #aipanel .tabs2 button:hover{background:var(--surface)}
+    #aipanel .tabs2 button.on{background:var(--ai-blue);border-color:transparent;color:#fff;font-weight:600}
+    #aipanel .tabs2 button svg{width:14px;height:14px;flex:none}
+    #aipanel .bd{padding:.9rem 1rem;overflow-y:auto;flex:1;font-size:.845rem;line-height:1.75}
+    #aipanel .bd h4{margin:0 0 .5rem;font-size:.86rem;color:var(--text)}
+    #aipanel .msg{margin-bottom:.65rem;display:flex;gap:.5rem;align-items:flex-end}
+    #aipanel .msg.me{flex-direction:row-reverse}
+    #aipanel .msg .ic{width:1.7rem;height:1.7rem;border-radius:50%;flex:none;display:flex;
+      align-items:center;justify-content:center;background:var(--ai-blue);color:#fff}
+    #aipanel .msg.me .ic{background:var(--line);color:var(--text-soft)}
+    #aipanel .msg .b{max-width:80%;padding:.55rem .8rem;border-radius:14px 14px 14px 4px;
+      background:var(--surface-2);border:1px solid var(--line-soft)}
+    #aipanel .msg.me .b{background:var(--ai-blue);color:#fff;border-color:transparent;
+      border-radius:14px 14px 4px 14px}
+    #aipanel .msg .b .sub{opacity:.75;font-size:.78rem}
+    #aipanel .grp{margin-top:.7rem}
+    #aipanel .grp .lb2{font-size:.74rem;color:var(--muted);font-weight:600;margin-bottom:.25rem;
+      text-transform:none;letter-spacing:.01em}
+    #aipanel .ft{display:flex;gap:.45rem;padding:.65rem .7rem;border-top:1px solid var(--line-soft);
+      background:var(--surface-2);flex:none}
+    #aipanel .ft input{flex:1;border:1px solid var(--line);border-radius:999px;padding:.5rem .9rem;
+      font:inherit;font-size:.84rem;background:var(--surface);color:var(--text);outline:none}
+    #aipanel .ft input:focus{border-color:var(--ai-blue);box-shadow:0 0 0 3px rgba(47,107,255,.14)}
+    #aipanel .ft button{border:none;background:var(--ai-blue);color:#fff;border-radius:50%;
+      width:2.35rem;height:2.35rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+      flex:none;transition:transform .15s}
+    #aipanel .ft button:hover{transform:scale(1.07)}
+    #aipanel .chip{display:inline-flex;align-items:center;margin:.2rem .25rem 0 0;padding:.3rem .7rem;
+      border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:.775rem;
+      cursor:pointer;color:var(--text-soft);transition:all .15s}
+    #aipanel .chip:hover{border-color:var(--ai-blue);color:var(--ai-blue);background:rgba(47,107,255,.06)}
+    #aipanel table.tight td,#aipanel table.tight th{padding:.25rem .4rem;font-size:.8rem}
+    /* ---- ปุ่มและหน้าต่างข้อมูลโครงการวิจัย มุมล่างซ้ายของหน้าแรก ----
+       มุมล่างขวาถูกใช้โดยแถบสถานะการเชื่อมต่อและผู้ช่วยอัจฉริยะแล้ว จึงวางไว้ทางซ้าย */
+    #rsbtn{position:fixed;left:1.15rem;bottom:1.15rem;z-index:255;display:flex;align-items:center;
+      gap:.6rem;max-width:min(21rem,calc(100vw - 2.3rem));padding:.6rem .95rem .6rem .7rem;
+      cursor:pointer;text-align:left;font:inherit;color:var(--text);background:var(--surface);
+      border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 26px rgba(0,0,0,.14);
+      transition:transform .18s,box-shadow .18s,border-color .18s;animation:ptru-pop .3s ease}
+    #rsbtn:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.2);border-color:var(--ai-blue)}
+    #rsbtn:focus-visible{outline:2px solid var(--ai-blue);outline-offset:2px}
+    #rsbtn .ic{width:2.35rem;height:2.35rem;border-radius:11px;flex:none;display:flex;align-items:center;
+      justify-content:center;color:#fff;background:linear-gradient(140deg,var(--ai-blue),var(--ai-blue-dk))}
+    #rsbtn .tx{min-width:0;line-height:1.35}
+    #rsbtn b{display:block;font-size:.85rem}
+    #rsbtn i{display:block;font-style:normal;font-size:.73rem;color:var(--muted);
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #rsmodal{position:fixed;inset:0;z-index:290;display:flex;align-items:center;justify-content:center;
+      padding:1.1rem;background:rgba(8,14,30,.55);backdrop-filter:blur(3px);animation:ptru-fade .18s ease}
+    #rsmodal .card{width:min(56rem,100%);max-height:90vh;display:flex;flex-direction:column;
+      background:var(--surface);border-radius:18px;overflow:hidden;
+      box-shadow:0 24px 64px rgba(0,0,0,.34);animation:ptru-pop .22s ease}
+    #rsmodal .hd{flex:none;display:flex;align-items:flex-start;gap:.75rem;padding:.95rem 1.1rem;color:#fff;
+      background:linear-gradient(140deg,var(--ai-blue),var(--ai-blue-dk))}
+    #rsmodal .hd .av{width:2.3rem;height:2.3rem;border-radius:10px;flex:none;display:flex;
+      align-items:center;justify-content:center;background:rgba(255,255,255,.18)}
+    #rsmodal .hd b{display:block;font-size:.98rem;line-height:1.35}
+    #rsmodal .hd span{font-size:.77rem;opacity:.9;line-height:1.45}
+    #rsmodal .hd button{margin-left:auto;flex:none;background:rgba(255,255,255,.14);border:none;color:#fff;
+      cursor:pointer;line-height:0;padding:.42rem;border-radius:9px;display:flex;transition:background .15s}
+    #rsmodal .hd button:hover{background:rgba(255,255,255,.28)}
+    #rsmodal .bd{overflow-y:auto;padding:1.15rem;font-size:.87rem;line-height:1.75}
+    #rsmodal .sec{margin-bottom:1.2rem}
+    #rsmodal .sec:last-child{margin-bottom:0}
+    #rsmodal .lb{font-size:.73rem;font-weight:700;letter-spacing:.05em;color:var(--ai-blue);margin-bottom:.35rem}
+    #rsmodal .fund{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .9rem;border-radius:12px;
+      background:rgba(47,107,255,.07);border:1px solid rgba(47,107,255,.22);font-size:.83rem;line-height:1.6}
+    #rsmodal .fund .fundic{flex:none;margin-top:.16rem;color:var(--ai-blue)}
+    #rsmodal .th-title{font-family:'Noto Serif Thai',serif;font-size:1.04rem;font-weight:600;
+      line-height:1.65;color:var(--text)}
+    #rsmodal .en-title{margin-top:.35rem;font-size:.85rem;font-style:italic;color:var(--text-soft);line-height:1.6}
+    #rsmodal .innov{padding:.7rem .9rem;border-radius:12px;background:var(--surface-2);border:1px solid var(--line-soft)}
+    #rsmodal .innov b{font-size:.96rem}
+    #rsmodal .innov .sub3{color:var(--text-soft);font-size:.83rem}
+    #rsmodal .dia{display:block;width:100%;height:auto;max-width:38rem;margin:.2rem auto .1rem}
+    #rsmodal .dia rect{fill:var(--surface);stroke:var(--line);stroke-width:1.4}
+    #rsmodal .dia rect.a{fill:var(--ai-blue);stroke:none}
+    #rsmodal .dia rect.b{fill:rgba(47,107,255,.09);stroke:var(--ai-blue)}
+    #rsmodal .dia rect.c{fill:var(--surface-2)}
+    #rsmodal .dia rect.g{fill:var(--ok);stroke:none}
+    #rsmodal .dia text{font-size:13px;font-weight:600;fill:var(--text);
+      text-anchor:middle;dominant-baseline:central}
+    #rsmodal .dia text.a,#rsmodal .dia text.g{fill:#fff}
+    #rsmodal .dia text.b{fill:var(--ai-blue)}
+    #rsmodal .dia line{stroke:var(--muted);stroke-width:1.6;opacity:.75}
+    #rsmodal .dia marker path{fill:var(--muted);stroke:none}
+    #rsmodal details{margin-top:.55rem}
+    #rsmodal summary{cursor:pointer;font-size:.79rem;color:var(--muted)}
+    #rsmodal summary:hover{color:var(--ai-blue)}
+    #rsmodal pre{margin:.5rem 0 0;padding:.8rem;overflow-x:auto;border-radius:10px;font-size:.74rem;
+      line-height:1.42;background:var(--surface-2);border:1px solid var(--line-soft);color:var(--text-soft);
+      font-family:ui-monospace,'Cascadia Mono','Consolas',monospace}
+    #rsmodal .people{display:grid;gap:.85rem;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))}
+    #rsmodal .person{display:flex;gap:.85rem;padding:.85rem;border:1px solid var(--line);
+      border-radius:14px;background:var(--surface-2)}
+    #rsmodal .person img{width:6.1rem;height:7.7rem;flex:none;border-radius:11px;
+      object-fit:cover;object-position:50% 16%;background:var(--line-soft);
+      box-shadow:0 3px 10px rgba(0,0,0,.16)}
+    #rsmodal .person .who{min-width:0}
+    #rsmodal .person .role{display:inline-block;margin-bottom:.3rem;padding:.12rem .55rem;border-radius:999px;
+      font-size:.7rem;font-weight:600;background:rgba(47,107,255,.12);color:var(--ai-blue)}
+    #rsmodal .person .nm{font-family:'Noto Serif Thai',serif;font-size:.98rem;font-weight:600;line-height:1.4}
+    #rsmodal .person .af{margin-top:.22rem;font-size:.78rem;color:var(--text-soft);line-height:1.55}
+    #rsmodal .person .dl{margin-top:.38rem;font-size:.78rem;color:var(--muted);line-height:1.65}
+    #rsmodal .person a{color:var(--ai-blue);text-decoration:none}
+    #rsmodal .person a:hover{text-decoration:underline}
+    @media(max-width:600px){
+      #rsbtn{left:.75rem;bottom:.75rem;padding:.55rem .7rem}
+      #rsbtn i{display:none}
+      #rsmodal{padding:.6rem}
+      #rsmodal .bd{padding:.9rem}
+      #rsmodal .person{flex-direction:column;align-items:center;text-align:center}
+      #rsmodal .person img{width:7.4rem;height:9.3rem}
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+/* ---------- หน้าจอกำลังเข้าสู่ระบบ ----------
+   แทนแถบแจ้งเตือนเดิม เพราะการเข้าสู่ระบบใช้เวลาหลายวินาที
+   เปอร์เซ็นต์ผูกกับขั้นตอนจริงที่ทำเสร็จแล้ว ไม่ใช่ตัวเลขที่วิ่งเองตามเวลา
+   ผู้ใช้จึงรู้ว่าระบบค้างอยู่ที่ขั้นใดหากช้าผิดปกติ */
+const LOADER={pct:0,stage:""};
+function loaderShow(title){
+  ensureAppStyles();
+  let el=document.getElementById("loadscreen");
+  if(!el){
+    el=document.createElement("div");
+    el.id="loadscreen";
+    el.setAttribute("role","status");
+    el.setAttribute("aria-live","polite");
+    el.innerHTML=`<div class="box">
+      <div class="ring">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle cx="60" cy="60" r="54" fill="none" stroke="var(--ai-blue)" stroke-width="3"
+            stroke-dasharray="7 7" opacity=".38"></circle>
+          <circle id="ld-arc" cx="60" cy="60" r="46" fill="none" stroke="var(--ai-blue)" stroke-width="7"
+            stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289"
+            style="transition:stroke-dashoffset .35s ease"></circle>
+          <circle class="spin" cx="60" cy="60" r="34" fill="none" stroke="var(--ai-blue)" stroke-width="3"
+            stroke-linecap="round" stroke-dasharray="36 178" opacity=".75"></circle>
+        </svg>
+        <div class="pct" id="ld-pct">0%</div>
+      </div>
+      <h3 id="ld-title">กำลังเข้าสู่ระบบ...</h3>
+      <p>กรุณารอสักครู่</p>
+      <div class="stage" id="ld-stage"></div>
+    </div>`;
+    document.body.appendChild(el);
+  }
+  el.style.display="flex";
+  if(title){ const h=document.getElementById("ld-title"); if(h) h.textContent=title; }
+  loaderSet(0,"");
+}
+function loaderSet(pct,stage){
+  LOADER.pct=clamp(Math.round(pct),0,100);
+  if(stage!==undefined) LOADER.stage=stage;
+  const p=document.getElementById("ld-pct"), a=document.getElementById("ld-arc"), s=document.getElementById("ld-stage");
+  if(p) p.textContent=LOADER.pct+"%";
+  if(a) a.setAttribute("stroke-dashoffset",String(289-289*LOADER.pct/100));
+  if(s) s.textContent=LOADER.stage||"";
+}
+function loaderHide(){
+  const el=document.getElementById("loadscreen");
+  if(!el) return;
+  loaderSet(100,"เสร็จสมบูรณ์");
+  setTimeout(()=>{ el.style.opacity="0"; setTimeout(()=>{ el.style.display="none"; el.style.opacity=""; },180); },220);
+}
+
 /* ---------- แถบแจ้งเตือนการทำงาน ----------
    วางไว้นอก #app จึงไม่ถูกลบเมื่อหน้าจอวาดใหม่ระหว่างรอเซิร์ฟเวอร์ตอบ
    ใช้บอกผู้ใช้ว่าระบบกำลังบันทึกอยู่ และบอกผลเมื่อบันทึกเสร็จ */
@@ -6715,7 +7076,6 @@ const LIVE = {
   bankLive : false,
   queue    : [],                 // งานเขียนที่ล้มเหลว รอส่งซ้ำ
   intent   : null,
-  statusClosed: false,
 };
 const liveOn = () => LIVE.on && LIVE.session;
 
@@ -6941,19 +7301,30 @@ async function liveHydrate() {
   try {
     const me = S.user;
 
-    /* 1) ข้อมูลตั้งต้นทั้งหมดในคำขอเดียว
-       เดิมยิงหลายคำขอเรียงกัน (framework.get, users.list, reg.list, item.list)
-       Apps Script ตอบแต่ละคำขอหลายวินาที ผู้ใช้จึงต้องรอนานกว่าจะเห็นข้อมูล
-       boot.data รวมทุกส่วนไว้ และข้ามส่วนที่ผู้ใช้ไม่มีสิทธิ์ให้เอง */
-    let boot = null;
-    try { boot = await API.call('boot.data', {}); }
-    catch (e) {
+    const roleNow = S.role;
+    const isStudent = roleNow === 'Student';
+
+    /* 1) ยิงทุกคำขอที่ไม่ขึ้นต่อกันพร้อมกันในรอบเดียว
+       Apps Script ตอบแต่ละคำขอหลายวินาที การเรียงกันจึงบวกเวลากันตรง ๆ
+       assess.bulk คัดนักศึกษาตามสิทธิ์ที่ฝั่งเซิร์ฟเวอร์เอง จึงไม่ต้องรอรายชื่อผู้ใช้ก่อน
+       เวลารวมจึงเท่ากับคำขอที่ช้าที่สุดเพียงคำขอเดียว แทนที่จะเป็นผลบวกของทุกคำขอ */
+    loaderSet(62, 'กำลังโหลดข้อมูลทั้งหมดพร้อมกัน');
+    const [bootRes, bulkRes, evRes, examRes] = await Promise.all([
+      API.call('boot.data', {}).catch(e => ({__err: e})),
+      API.call('assess.bulk', {}).catch(() => null),
+      isStudent ? API.call('evidence.list', {student_id: me.id}).catch(() => null) : Promise.resolve(null),
+      isStudent ? API.call('exam.results', {student_id: me.id}).catch(() => null) : Promise.resolve(null),
+    ]);
+
+    let boot = bootRes;
+    if (boot && boot.__err) {
+      const e = boot.__err;
       /* เซิร์ฟเวอร์ยังเป็นรุ่นก่อนที่ไม่มี boot.data (ยังไม่ได้ deploy Code.gs รุ่นใหม่)
          ถอยไปเรียกทีละคำสั่งแบบเดิม เพื่อให้หน้าเว็บยังใช้งานได้ */
       if (String(e.code) === 'NO_ROUTE' || /ไม่พบคำสั่ง/.test(e.message || '')) {
         LIVE.note = 'เซิร์ฟเวอร์ยังเป็นรุ่นก่อน กรุณาอัปเดต Code.gs เพื่อให้โหลดข้อมูลได้เร็วขึ้น';
         boot = await liveBootLegacy();
-      } else liveErr(e);
+      } else { liveErr(e); boot = null; }
     }
 
     if (boot && boot.framework) {
@@ -6981,16 +7352,27 @@ async function liveHydrate() {
     if (items.length) applyItems(items);
     else if (!LIVE.bankLive) { BANK = buildBank(); bankChanged(); }
 
-    /* วาดหน้าจอด้วยข้อมูลที่ได้แล้ว ก่อนเริ่มงานหนักส่วนถัดไป */
-    render();
-
-    /* 5) ผลรายตัวชี้วัด */
-    const role = S.role;
-    if (role === 'Student') {
-      await Promise.all([liveStudent(S.user.id, true), liveExamResults(S.user.id)]);
-    } else if (LIVE_CFG.autoDeep) {
-      liveSyncAll();          // ทำงานเบื้องหลัง ไม่บล็อกหน้าจอ
+    /* 5) ผลรายตัวชี้วัด มาพร้อมรอบเดียวกันแล้ว เหลือเพียงนำมาใช้
+       ต้องทำหลังใส่กรอบสมรรถนะ เพราะการรวมคะแนนใช้จำนวนระดับจากกรอบ */
+    loaderSet(84, 'กำลังประมวลผลการประเมิน');
+    let bulkOk = 0;
+    if (bulkRes && bulkRes.students) {
+      Object.keys(bulkRes.students).forEach(sid => {
+        applyAssessments(sid, bulkRes.students[sid]);
+        bulkOk++;
+      });
     }
+    if (evRes) applyEvidenceRows(me.id, evRes.evidence);
+    if (examRes) applyExamRows(me.id, examRes);
+
+    /* ถ้า assess.bulk ใช้ไม่ได้ (เซิร์ฟเวอร์รุ่นก่อน) ค่อยถอยไปวิธีเดิม */
+    const role = S.role;
+    if (!bulkOk) {
+      if (role === 'Student') await Promise.all([liveStudent(me.id, true), liveExamResults(me.id)]);
+      else if (LIVE_CFG.autoDeep) liveSyncAll();
+    }
+    loaderSet(95, 'เตรียมหน้าจอ');
+    render();
 
     /* 6) คลังข้อสอบว่างเปล่า ค่อยซิงก์ชุดตั้งต้นทีหลัง ไม่ให้ขวางการเข้าใช้งาน */
     const staff = ['Administrator', 'Program Chair'].includes(role);
@@ -7020,9 +7402,15 @@ function mapReg(r) {
 /** ดึงผลการสอบล่าสุดของนักศึกษาจากฐานข้อมูลทุกครั้งที่เข้าสู่ระบบ */
 async function liveExamResults(sid){
   if(!liveOn() || !sid) return 0;
+  try { return applyExamRows(sid, await API.call('exam.results', {student_id:sid})); }
+  catch(e) { liveErr(e); return 0; }
+}
+
+/** แปลงผลการสอบจากเซิร์ฟเวอร์ลงคลังในหน้าเว็บ
+    แยกออกมาเพื่อให้ liveHydrate ใช้ผลที่ดึงมาพร้อมคำขออื่นได้ โดยไม่ต้องยิงซ้ำ */
+function applyExamRows(sid, d){
   try {
-    const d = await API.call('exam.results', {student_id:sid});
-    const attempts = Array.isArray(d.attempts) ? d.attempts : [];
+    const attempts = Array.isArray(d && d.attempts) ? d.attempts : [];
     const latest = {};
     attempts.filter(a => String(a.status || '').toLowerCase() === 'submitted' || a.submitted_at)
       .sort((a,b) => String(a.submitted_at || a.created_at || '').localeCompare(String(b.submitted_at || b.created_at || '')))
@@ -7090,9 +7478,14 @@ async function liveSyncAll(force) {
      assess.bulk อ่านสองชีตนั้นครั้งเดียวแล้วแจกตามนักศึกษา
      ยังแบ่งเป็นชุดละ 40 คน เพื่อไม่ให้คำตอบก้อนเดียวใหญ่เกินไปเมื่อข้อมูลสะสมมาก */
   const CHUNK = 40;
+  const parts = [];
+  for (let i = 0; i < list.length; i += CHUNK) parts.push(list.slice(i, i + CHUNK));
+
+  /* ยิงหลายชุดพร้อมกัน แทนการรอทีละชุด
+     Apps Script ตอบคำขอละหลายวินาที การรอเรียงกันจึงบวกเวลากันตรง ๆ
+     จำกัดจำนวนที่ยิงพร้อมกันไว้ตาม LIVE_CFG.parallel เพื่อไม่ให้ชนโควตาของ Apps Script */
   let failed = 0;
-  for (let i = 0; i < list.length; i += CHUNK) {
-    const part = list.slice(i, i + CHUNK);
+  const runPart = async part => {
     try {
       const d = await API.call('assess.bulk', {student_ids: part.map(s => s.id)});
       const box = (d && d.students) || {};
@@ -7105,9 +7498,12 @@ async function liveSyncAll(force) {
         catch (x) { /* ข้ามคนที่ดึงไม่ได้ */ }
       }
     }
-    LIVE.sync.done = Math.min(list.length, i + part.length);
+    LIVE.sync.done = Math.min(list.length, LIVE.sync.done + part.length);
     render();
-  }
+  };
+  let next = 0;
+  const worker = async () => { while (next < parts.length) await runPart(parts[next++]); };
+  await Promise.all(Array.from({length: Math.min(LIVE_CFG.parallel, parts.length)}, worker));
   LIVE.sync.running = false;
   EDM_CACHE = null;
   LIVE.info = failed
@@ -7119,14 +7515,16 @@ async function liveSyncAll(force) {
 /*───────── 21.8 การเข้าสู่ระบบด้วยบัญชีจริง ─────────*/
 async function liveLogin(email, pw) {
 
-  LIVE.statusClosed = false;
   liveBusy(1);
 
   LIVE.err = '';
   S.err = '';
-  S.notice = 'กำลังตรวจสอบบัญชีกับเซิร์ฟเวอร์…';
-  toast("⏳ กำลังตรวจสอบบัญชีกับฐานข้อมูล…","wait",true);
+  S.notice = '';
 
+  /* หน้าจอกำลังเข้าสู่ระบบ แทนแถบแจ้งเตือนเดิม
+     เปอร์เซ็นต์เดินตามขั้นตอนที่ทำเสร็จจริง ไม่ใช่ตัวเลขที่วิ่งเองตามเวลา */
+  loaderShow('กำลังเข้าสู่ระบบ...');
+  loaderSet(8, 'กำลังส่งคำขอไปยังฐานข้อมูล');
   render();
 
   try {
@@ -7137,6 +7535,7 @@ async function liveLogin(email, pw) {
       password: pw,
       ua: navigator.userAgent
     });
+    loaderSet(45, 'ยืนยันตัวตนสำเร็จ กำลังเตรียมสิทธิ์การใช้งาน');
 
     /* 2. Token */
     API.token = r.token;
@@ -7164,26 +7563,22 @@ async function liveLogin(email, pw) {
     S.notice = r.must_change_password
       ? 'บัญชีนี้ยังใช้รหัสผ่านชั่วคราว กรุณาเปลี่ยนรหัสผ่านที่หน้าโปรไฟล์'
       : '';
-    toast("✅ เข้าสู่ระบบสำเร็จ กำลังโหลดข้อมูลจากฐานข้อมูล…","ok");
 
-    /* 5. สำคัญที่สุด:
-          แสดง Dashboard ทันที
-          ไม่รอ liveHydrate()
-    */
+    /* 5. โหลดข้อมูลตั้งต้นให้เสร็จก่อนปิดหน้าจอโหลด
+          ผู้ใช้จึงเห็นแดชบอร์ดที่มีข้อมูลครบตั้งแต่ครั้งแรก
+          ไม่ใช่หน้าว่างที่ค่อย ๆ เติมข้อมูลเข้ามาทีหลัง */
     liveBusy(-1);
+    loaderSet(60, 'กำลังโหลดกรอบสมรรถนะและรายชื่อผู้ใช้');
+
+    try { await liveHydrate(); }
+    catch (err) {
+      console.warn('[PTRU] liveHydrate failed:', err);
+      S.notice = 'เข้าสู่ระบบสำเร็จ แต่โหลดข้อมูลบางส่วนไม่สำเร็จ กดปุ่มซิงก์ข้อมูลเพื่อลองใหม่';
+    }
+
+    loaderHide();
+    toast("✅ เข้าสู่ระบบสำเร็จ","ok");
     render();
-
-    /* 6. โหลดข้อมูลเพิ่มเติมแบบ Background */
-    void liveHydrate()
-      .catch(err => {
-
-        console.warn('[PTRU] liveHydrate failed:', err);
-
-        // Login สำเร็จแล้ว ไม่ควรส่งผู้ใช้กลับหน้า Login
-        S.notice = 'เข้าสู่ระบบสำเร็จ กำลังโหลดข้อมูลเพิ่มเติม…';
-        render();
-      });
-
     return true;
 
   } catch (e) {
@@ -7197,6 +7592,7 @@ async function liveLogin(email, pw) {
 
     S.err = (e && e.message) || 'เข้าสู่ระบบไม่สำเร็จ';
     S.notice = '';
+    loaderHide();
     toastFailed(S.err);
 
     return false;
@@ -7339,7 +7735,6 @@ const isFileUrl = () => {
 };
 
 function liveBadge() {
-  if (LIVE.statusClosed) return '';
   const dot = c => `<i style="width:.5rem;height:.5rem;border-radius:50%;background:${c};display:inline-block;flex:none"></i>`;
   let state, color;
   if (LIVE.checking) { state = 'กำลังตรวจสอบเซิร์ฟเวอร์'; color = 'var(--warn)'; }
@@ -7363,7 +7758,14 @@ function liveBadge() {
   if (LIVE.on && !LIVE.busy && LIVE.session && S.role === 'Administrator' &&
       (sd.indicators !== undefined && sd.indicators < 680))
     btns.push(`<button class="btn btn-ghost btn-sm" data-act="liveseed" title="เติมกรอบสมรรถนะ บัญชีผู้ใช้ คลังข้อสอบ และผลการประเมินตั้งต้น">เติมข้อมูลตั้งต้น</button>`);
-  if (liveOn() && !LIVE.sync.running) btns.push(`<button class="btn btn-ghost btn-sm" data-act="livesync">ซิงก์ข้อมูล</button>`);
+
+  /* ซ่อนแถบสถานะเมื่อทุกอย่างปกติ
+     เดิมแสดงตลอดเวลาแม้ไม่มีอะไรต้องทำ กลายเป็นกล่องข้อความบังหน้าจอโดยไม่จำเป็น
+     แสดงเฉพาะเมื่อมีสิ่งที่ผู้ใช้ต้องรู้หรือต้องจัดการจริง คือ
+     ยังต่อฐานข้อมูลไม่ได้ · มีข้อผิดพลาด · ต้องติดตั้งหรือซ่อมข้อมูล · กำลังซิงก์อยู่
+     ส่วนผลสำเร็จตามปกติแจ้งผ่านแถบ toast ด้านบนอยู่แล้ว */
+  const mustShow = LIVE.checking || !LIVE.on || !!LIVE.err || btns.length || LIVE.sync.running;
+  if (!mustShow) return '';
 
   const msg = LIVE.err ? `<div style="color:var(--risk)">${esc(LIVE.err)}</div>`
             : (LIVE.info ? `<div style="color:var(--muted)">${esc(LIVE.info)}</div>` : '');
@@ -7375,8 +7777,7 @@ function liveBadge() {
       max-width:min(34rem,92vw);padding:.5rem .8rem;border:1px solid var(--line);border-radius:10px;
       background:var(--surface);box-shadow:0 2px 12px rgba(0,0,0,.14);font-size:.78rem;line-height:1.5">
     <span style="padding-top:.4rem">${dot(color)}</span>
-    <div style="flex:1;min-width:0;position:relative;padding-right:2rem">
-      <button class="btn btn-ghost btn-sm" data-act="liveclose" title="ปิดแถบสถานะ" aria-label="ปิดแถบสถานะ" style="position:absolute;right:0;top:-.15rem;min-width:2rem;width:2rem;height:2rem;padding:0;font-size:1.15rem;line-height:1;border-radius:8px">×</button>
+    <div style="flex:1;min-width:0">
       <div><b>${esc(state)}</b>${bits.length ? `<span style="color:var(--muted)"> · ${esc(bits.join(' · '))}</span>` : ''}</div>
       ${msg}${warn}
       ${btns.length ? `<div style="margin-top:.35rem;display:flex;gap:.35rem;flex-wrap:wrap">${btns.join('')}</div>` : ''}
@@ -7409,12 +7810,6 @@ document.addEventListener('click', e => {
   if (!el) return;
   const a = el.dataset.act, v = el.dataset.v;
 
-  if (a === 'liveclose') {
-    e.stopPropagation(); e.preventDefault();
-    LIVE.statusClosed = true;
-    render();
-    return;
-  }
   if (a === 'livesync') { e.stopPropagation(); e.preventDefault(); liveSyncAll(true); return; }
   if (a === 'livecheck') { e.stopPropagation(); e.preventDefault(); liveConnect(true); return; }
   if (a === 'livesetup') { e.stopPropagation(); e.preventDefault(); liveSetup(); return; }
@@ -7785,24 +8180,630 @@ async function liveConnect(retry) {
 
 (async function liveInit() {
   if (LIVE_CFG.mode === 'demo') { LIVE.checking = false; LIVE.info = 'ตั้งค่าให้ทำงานด้วยข้อมูลจำลอง'; render(); return; }
-  const ok = await liveConnect(false);
-  if (!ok) return;
-  /* คืนสภาพการเข้าสู่ระบบเดิมเมื่อผู้ใช้รีเฟรชหน้า */
+
   let saved = null;
   try { saved = sessionStorage.getItem('ptru_token'); } catch (x) {}
-  if (!saved) return;
-  API.token = saved;
-  try {
-    const me = await API.call('auth.me', {});
-    const u = mapUser(me.user);
-    if (Array.isArray(me.roles) && me.roles.length) u.roles = me.roles.filter(Boolean);
-    LIVE.session = true; S.user = u; S.role = me.active_role || u.roles[0]; S.page = 'dashboard';
-    await liveHydrate();
-  } catch (x) {
-    API.token = null;
-    try { sessionStorage.removeItem('ptru_token'); } catch (y) {}
-  } finally { render(); }
+
+  /* มีโทเคนเดิมอยู่ ให้ข้ามคำสั่ง health ไปเลย
+     auth.me ยืนยันทั้งการเชื่อมต่อและตัวตนในคำขอเดียว
+     Apps Script ตอบแต่ละคำขอหลายวินาที การตัดคำขอหนึ่งออกจึงเร็วขึ้นเท่าตัวตอนรีเฟรชหน้า */
+  if (saved) {
+    API.token = saved;
+    LIVE.checking = true; LIVE.info = 'กำลังคืนสภาพการเข้าสู่ระบบ…';
+    loaderShow('กำลังคืนสภาพการเข้าสู่ระบบ...');
+    loaderSet(15, 'ตรวจสอบเซสชันเดิมกับฐานข้อมูล');
+    render();
+    try {
+      const me = await API.call('auth.me', {});
+      const u = mapUser(me.user);
+      if (Array.isArray(me.roles) && me.roles.length) u.roles = me.roles.filter(Boolean);
+      LIVE.on = true; LIVE.checking = false; LIVE.session = true; LIVE.err = '';
+      S.user = u; S.role = me.active_role || u.roles[0]; S.page = 'dashboard';
+      loaderSet(55, 'กำลังโหลดข้อมูลของท่าน');
+      render();
+      try { await liveHydrate(); } catch (e) { console.warn('[PTRU] hydrate:', e); }
+      loaderHide(); render();
+      liveConnect(false);        // ตรวจสภาพระบบต่อเบื้องหลัง ไม่ให้ขวางการใช้งาน
+      return;
+    } catch (x) {
+      /* โทเคนหมดอายุหรือถูกยกเลิก ล้างทิ้งแล้วไปเส้นทางปกติ */
+      API.token = null;
+      try { sessionStorage.removeItem('ptru_token'); } catch (y) {}
+      loaderHide();
+    }
+  }
+
+  await liveConnect(false);
 })();
+
+/* ============================================================
+   Floating AI Assistant
+   ปุ่มลอยมุมล่างขวา เปิดหน้าต่างผู้ช่วยที่ตอบจากข้อมูลจริงในระบบ
+   วางไว้นอก #app จึงไม่ถูกลบเมื่อหน้าจอวาดใหม่ และไม่รบกวนตัวจัดการเหตุการณ์เดิม
+   หมายเหตุ ระบบนี้ไม่ได้เรียกโมเดลภาษาภายนอก แต่ตอบจากกฎที่อ่านข้อมูลของระบบเอง
+   จึงตรวจสอบย้อนกลับได้ว่าคำตอบมาจากตัวเลขใด และไม่ส่งข้อมูลผู้เรียนออกนอกระบบ
+   ============================================================ */
+const AI={open:false,tab:"chat",msgs:[],greeted:false,pos:null,dragging:false};
+
+/* ตำแหน่งที่ผู้ใช้ลากไว้ จำไว้ข้ามการรีเฟรชหน้า
+   ปุ่มลอยมุมล่างขวาบังปุ่ม "ถัดไป" ของหน้าทำแบบทดสอบ ผู้ใช้จึงต้องย้ายเองได้ */
+function aiLoadPos(){
+  try{ const v=localStorage.getItem("ptru_ai_pos"); if(v) AI.pos=JSON.parse(v); }catch(e){}
+}
+function aiSavePos(){
+  try{ localStorage.setItem("ptru_ai_pos",JSON.stringify(AI.pos)); }catch(e){}
+}
+/** วางตำแหน่งจากค่าที่ลากไว้ พร้อมดึงกลับเข้าจอเสมอ
+    กันกรณีย่อหน้าต่างหรือสลับอุปกรณ์แล้วตำแหน่งเดิมหลุดออกนอกจอ */
+function aiApplyPos(el){
+  if(!AI.pos){ el.style.left=""; el.style.top=""; el.style.right=""; el.style.bottom=""; return; }
+  const w=el.offsetWidth||60, h=el.offsetHeight||60;
+  const x=clamp(AI.pos.x,6,Math.max(6,window.innerWidth-w-6));
+  const y=clamp(AI.pos.y,6,Math.max(6,window.innerHeight-h-6));
+  el.style.left=x+"px"; el.style.top=y+"px";
+  el.style.right="auto"; el.style.bottom="auto";
+}
+/** ลากย้ายด้วยเมาส์หรือนิ้ว ใช้ pointer event จึงรองรับทั้งสองแบบด้วยโค้ดชุดเดียว
+    แยกการลากออกจากการคลิกด้วยระยะขยับขั้นต่ำ การกดปุ่มจึงยังเปิดหน้าต่างได้ตามปกติ */
+function aiDraggable(el,isHandle){
+  if(el.__drag) return; el.__drag=true;
+  el.addEventListener("pointerdown",e=>{
+    if(e.pointerType==="mouse"&&e.button!==0) return;
+    if(!isHandle(e.target)) return;
+    const r=el.getBoundingClientRect();
+    const ox=e.clientX-r.left, oy=e.clientY-r.top;
+    const x0=e.clientX, y0=e.clientY;
+    let moved=false;
+    const move=ev=>{
+      if(!moved&&Math.abs(ev.clientX-x0)+Math.abs(ev.clientY-y0)<5) return;
+      if(!moved){ moved=true; AI.dragging=true; el.style.transition="none"; }
+      AI.pos={x:ev.clientX-ox,y:ev.clientY-oy};
+      aiApplyPos(el);
+      ev.preventDefault();
+    };
+    const up=()=>{
+      document.removeEventListener("pointermove",move);
+      document.removeEventListener("pointerup",up);
+      document.removeEventListener("pointercancel",up);
+      el.style.transition="";
+      if(moved){ aiSavePos(); setTimeout(()=>{AI.dragging=false;},0); }
+    };
+    document.addEventListener("pointermove",move);
+    document.addEventListener("pointerup",up);
+    document.addEventListener("pointercancel",up);
+  });
+}
+window.addEventListener("resize",()=>{
+  ["aiwrap","aipanel"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.style.display!=="none") aiApplyPos(el); });
+});
+
+/* ไอคอนเส้น (line icon) แบบเดียวกับชุดไอคอนสมัยใหม่ แทนการใช้ emoji
+   ซึ่งแสดงต่างกันในแต่ละระบบปฏิบัติการและควบคุมสีกับขนาดไม่ได้ */
+const ICN=(d,extra)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+  stroke-linecap="round" stroke-linejoin="round" ${extra||""}>${d}</svg>`;
+const AI_ICON={
+  bot:  ICN('<rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M9 16.5c1.5 1 4.5 1 6 0"/><path d="M2 13v2M22 13v2"/>'),
+  chat: ICN('<path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3z"/>'),
+  help: ICN('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.6M12 17h.01"/>'),
+  chart:ICN('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  find: ICN('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+  book: ICN('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M8 7h7M8 11h7"/>'),
+  send: ICN('<path d="m4 12 16-8-6 16-2.5-6z"/>'),
+  close:ICN('<path d="M6 6l12 12M18 6L6 18"/>'),
+  user: ICN('<circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>'),
+  spark:ICN('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'),
+};
+const AI_TABS=[["chat","สนทนา","chat"],["help","ช่วยเหลือ","help"],["comp","สมรรถนะ","chart"],
+               ["search","ค้นหา","find"],["manual","คู่มือ","book"]];
+
+const aiEsc=s=>esc(s);
+function aiSay(who,html){ AI.msgs.push({who,html}); }
+
+/** ตอบคำถามจากข้อมูลจริงในระบบ ครอบคลุมคำถามที่พบบ่อยของแต่ละบทบาท */
+function aiAnswer(q){
+  const t=String(q||"").trim();
+  if(!t) return "กรุณาพิมพ์คำถามครับ";
+  const s=t.toLowerCase();
+  const me=S.user?myUser():null;
+  const isStu=S.role==="Student";
+
+  if(/สูตร|คำนวณ|คิดคะแนน|หารด้วย|เกณฑ์คะแนน/.test(t))
+    return `<b>${aiEsc(SCORE_RULE)}</b><br>${aiEsc(SCORE_RULE_NOTE)}`;
+
+  if(/กรอบสมรรถนะ|เวอร์ชัน|version/.test(s))
+    return `กรอบสมรรถนะเวอร์ชัน <b>${aiEsc(FW.version||"—")}</b>
+      · ${FW.competencies.length} สมรรถนะ · ${FW.levels.length} ระดับ
+      ${FW.updatedAt?"<br>ปรับปรุงล่าสุด "+aiEsc(String(FW.updatedAt).slice(0,10)):""}`;
+
+  if(isStu&&me){
+    const P=personalize(me.id);
+    if(!P) return "ยังไม่มีผลการประเมินของท่านในระบบครับ";
+    /* กฎเฉพาะเจาะจงต้องมาก่อนกฎทั่วไป มิฉะนั้นคำว่า "คะแนน" หรือ "ระดับ"
+       จะดักคำถามที่ถามเรื่องอื่นไปตอบเป็นคะแนนรวมทั้งหมด */
+    if(/ลดลง|ถดถอย|แย่ลง|ตกลง/.test(t)){
+      if(!P.declining.length) return "ไม่มีสมรรถนะใดที่คะแนนลดลงจากรอบแรกครับ";
+      return "สมรรถนะที่คะแนนลดลง<br>"+P.declining.map((o,i)=>
+        `${i+1}. ${aiEsc(o.c.th)} · ${o.trend.toFixed(2)} ระดับจากรอบแรก (ปัจจุบัน ${fmt(o.v)})`).join("<br>");
+    }
+    if(/คะแนน|ได้เท่าไร|ระดับของฉัน|ผลของฉัน|เป้าหมายกี่|ถึงระดับ/.test(t)){
+      const lv=P.level?FW.levels[P.level-1]:null;
+      return `คะแนนรวมของท่านคือ <b>${fmt(P.overall)}</b> ${lv?"ระดับ "+aiEsc(lv.th):""}
+        · ถึงเป้าหมาย ${P.onTarget} จาก ${P.withV.length} สมรรถนะ
+        · เป้าหมายเฉลี่ยของชั้นปี ${fmt(P.targetAvg,1)}`;
+    }
+    if(/อ่อน|ต้องพัฒนา|ปรับปรุง|ต่ำ/.test(t)){
+      if(!P.gaps.length) return "ทุกสมรรถนะถึงระดับเป้าหมายแล้วครับ";
+      return "สมรรถนะที่ควรพัฒนาก่อน<br>"+P.gaps.map((o,i)=>
+        `${i+1}. ${aiEsc(o.c.th)} · ปัจจุบัน ${fmt(o.v)} เป้าหมาย ${o.t} (ขาด ${Math.abs(o.gap).toFixed(2)})`).join("<br>");
+    }
+    if(/เก่ง|จุดแข็ง|ดีที่สุด/.test(t)){
+      if(!P.strengths.length) return "ยังไม่มีข้อมูลเพียงพอครับ";
+      return "จุดแข็งของท่าน<br>"+P.strengths.map((o,i)=>
+        `${i+1}. ${aiEsc(o.c.th)} · ${fmt(o.v)} (สูงกว่าเป้าหมาย ${o.gap.toFixed(2)})`).join("<br>");
+    }
+    if(/พัฒนาการ|ก้าวหน้า|ดีขึ้น|แนวโน้ม/.test(t)){
+      if(P.growth===null) return "ยังมีรอบการประเมินไม่พอสำหรับดูแนวโน้ม ต้องมีอย่างน้อย 2 รอบครับ";
+      return `เทียบรอบแรกกับรอบล่าสุด เปลี่ยนแปลง <b>${(P.growth>=0?"+":"")+P.growth.toFixed(2)}</b> ระดับ
+        เฉลี่ย ${(P.perRound>=0?"+":"")+P.perRound.toFixed(2)} ต่อรอบ
+        ${P.declining.length?"<br>มี "+P.declining.length+" สมรรถนะที่ลดลง นำโดย "+aiEsc(P.declining[0].c.th):""}`;
+    }
+    if(/เสี่ยง|risk/.test(s))
+      return `ความเสี่ยงไม่ผ่านเกณฑ์ประมาณ <b>${Math.round(P.risk*100)}%</b>
+        ${P.risk>=.6?"อยู่ในระดับสูง ควรนัดหมายอาจารย์นิเทศก์":P.risk>=.35?"ต้องเฝ้าระวัง":"อยู่ในระดับต่ำ"}
+        <br><span class="sub">ค่านี้มาจากแบบจำลองที่ยังไม่ได้สอบเทียบกับข้อมูลย้อนหลังจริง ใช้ประกอบดุลยพินิจ</span>`;
+    if(/แผน|เส้นทาง|ควรทำ|path|เรียนรู้/.test(s)){
+      const ph=personalPath(P);
+      return "เส้นทางการเรียนรู้ของท่าน<br>"+ph.map((p,i)=>`<b>${i+1}. ${aiEsc(p.head)}</b> <span class="sub">${aiEsc(p.n)}</span>`).join("<br>")+
+        `<br><span class="sub">ดูรายละเอียดทั้งหมดได้ที่แดชบอร์ด หัวข้อ 📚 Personalized Learning Path</span>`;
+    }
+    if(/สอบ|แบบทดสอบ|exam/.test(s))
+      return `ท่านทำแบบทดสอบแล้ว <b>${P.examDone}</b> จาก ${P.openTests.length} ชุด
+        ${P.openTests.length>P.examDone?"<br>ไปที่เมนู แบบทดสอบสมรรถนะ เพื่อทำชุดที่เหลือ":""}`;
+    if(/หลักฐาน|แฟ้ม|portfolio/.test(s))
+      return `แฟ้มสะสมงานมี <b>${P.myEv.length}</b> รายการ · ผ่านการตรวจสอบ ${P.evVerified} · รอตรวจ ${P.evPending}`;
+  }
+
+  if(!isStu&&/นักศึกษา|กี่คน|จำนวน/.test(t)){
+    const st=visStudents();
+    return `ท่านดูแลนักศึกษา <b>${st.length}</b> คนในขอบเขตสิทธิ์ของท่าน` +
+      (scopeProgram()?` (สาขา ${aiEsc(scopeProgram())})`:"");
+  }
+  if(!isStu&&/เสี่ยง|เฝ้าระวัง/.test(t)){
+    const st=visStudents().map(s=>({s,r:analyze(FW,s.id)})).filter(o=>o.r).map(o=>({s:o.s,risk:o.r.edm.risk}));
+    const hi=st.filter(o=>o.risk>=0.35).sort((a,b)=>b.risk-a.risk).slice(0,5);
+    if(!hi.length) return "ไม่พบนักศึกษาที่ต้องเฝ้าระวังในขอบเขตของท่านครับ";
+    return `พบ <b>${st.filter(o=>o.risk>=0.35).length}</b> คนที่ต้องเฝ้าระวังขึ้นไป<br>`+
+      hi.map(o=>`${aiEsc(o.s.name)} · ${Math.round(o.risk*100)}%`).join("<br>");
+  }
+  if(RATER_ROLES.includes(S.role)&&/ฉันให้คะแนน|สอดคล้อง|เข้มงวด|ใจดี|bias/.test(t)){
+    const A=advisorIRR(me?me.id:"");
+    if(!A||!A.n||A.n<3) return "ยังมีระเบียนการประเมินของท่านไม่พอสำหรับคำนวณครับ";
+    return `จาก ${A.n} เซลล์ คะแนนของท่านเฉลี่ย ${fmt(A.ownMean)} เทียบค่ากลางฝ่ายอื่น ${fmt(A.otherMean)}
+      · ส่วนต่าง <b>${(A.bias>=0?"+":"")+A.bias.toFixed(2)}</b><br>${aiEsc(A.verdict)} (p = ${A.p.toFixed(3)})
+      <br><span class="sub">ดูรายละเอียดที่ โปรไฟล์ของฉัน › ความสอดคล้องของผู้ประเมิน</span>`;
+  }
+
+  /* กฎทั่วไปเรื่องระดับ วางไว้หลังกฎของผู้เรียน เพื่อไม่ให้ดักคำถามอย่าง
+     "ฉันถึงระดับเป้าหมายกี่สมรรถนะ" ซึ่งเป็นคำถามเรื่องคะแนนของตนเอง */
+  if(/ระดับสมรรถนะ|กี่ระดับ|ระดับมีอะไร|อธิบายระดับ/.test(t))
+    return "ระดับสมรรถนะมี "+FW.levels.length+" ระดับ<br>"+
+      FW.levels.map((l,i)=>`${i+1}. ${aiEsc(l.th)} · ${aiEsc(l.en)}`).join("<br>");
+
+  if(/สมรรถนะ.*(อะไร|มีกี่)|กี่สมรรถนะ/.test(t))
+    return `ชั้นปีนี้เปิดใช้ ${activeComps(FW,isStu&&me?me.year:S.year).length} สมรรถนะ จากทั้งหมด ${FW.competencies.length} ด้าน`;
+
+  const hit=FW.competencies.filter(c=>t.length>=3&&(c.th.includes(t)||String(c.code).toLowerCase()===s));
+  if(hit.length){
+    const c=hit[0];
+    const y=isStu&&me?me.year:S.year;
+    const cf=cfgOf(FW,y,c.id);
+    return `<b>${c.code} ${aiEsc(c.th)}</b><br>${aiEsc(c.en)} · กลุ่ม ${PTRU[c.ptru]?aiEsc(PTRU[c.ptru].th):"—"}
+      <br>ชั้นปีนี้ ${cf.active?"เปิดใช้":"ปิดใช้"} · ระดับเป้าหมาย ${cf.target} · ตัวชี้วัด ${(cf.indicators||[]).length} ข้อ`;
+  }
+
+  return `ยังไม่เข้าใจคำถามนี้ครับ ลองถามเช่น
+    <br>· คะแนนของฉันเท่าไร · สมรรถนะที่ต้องพัฒนา · แผนการเรียนรู้
+    <br>· สูตรคำนวณคะแนน · กรอบสมรรถนะเวอร์ชันอะไร
+    <br>หรือพิมพ์ชื่อสมรรถนะเพื่อดูรายละเอียด`;
+}
+
+/** ชุดคำถามแนะนำ จัดกลุ่มตามเรื่อง เพื่อให้ผู้ใช้เห็นว่าถามอะไรได้บ้าง
+    เลือกให้ตรงกับสิ่งที่บทบาทนั้นเห็นได้จริง จะได้ไม่ถามแล้วระบบตอบว่าไม่มีสิทธิ์ */
+function aiSuggestGroups(){
+  const common=["สูตรคำนวณคะแนนเป็นอย่างไร","กรอบสมรรถนะเวอร์ชันอะไร","ระดับสมรรถนะมีกี่ระดับ"];
+  if(S.role==="Student") return [
+    {t:"ผลการเรียนของฉัน",q:["คะแนนรวมของฉันเท่าไร","ฉันถึงระดับเป้าหมายกี่สมรรถนะ",
+      "สมรรถนะที่ฉันทำได้ดีที่สุด","สมรรถนะที่ฉันต้องพัฒนา"]},
+    {t:"พัฒนาการและความเสี่ยง",q:["พัฒนาการของฉันเป็นอย่างไร","ความเสี่ยงของฉันอยู่ระดับไหน",
+      "มีสมรรถนะไหนที่คะแนนลดลงบ้าง"]},
+    {t:"สิ่งที่ต้องทำ",q:["แผนการเรียนรู้ของฉัน","ฉันทำแบบทดสอบครบหรือยัง","หลักฐานในแฟ้มสะสมงานของฉัน"]},
+    {t:"เกี่ยวกับระบบ",q:common},
+  ];
+  if(RATER_ROLES.includes(S.role)) return [
+    {t:"การให้คะแนนของฉัน",q:["ฉันให้คะแนนสอดคล้องกับคนอื่นไหม","ฉันเข้มงวดหรือใจดีกว่าค่ากลาง"]},
+    {t:"นักศึกษาที่ดูแล",q:["ฉันดูแลนักศึกษากี่คน","นักศึกษาที่ต้องเฝ้าระวังมีใครบ้าง"]},
+    {t:"เกี่ยวกับระบบ",q:common},
+  ];
+  return [
+    {t:"ภาพรวมนักศึกษา",q:["ดูแลนักศึกษากี่คน","นักศึกษาที่ต้องเฝ้าระวังมีใครบ้าง"]},
+    {t:"เกี่ยวกับระบบ",q:common},
+  ];
+}
+function aiSuggestions(){ return aiSuggestGroups().flatMap(g=>g.q).slice(0,6); }
+
+function aiBody(){
+  if(AI.tab==="chat"){
+    const msgs=AI.msgs.map(m=>`<div class="msg ${m.who==="me"?"me":""}">
+      <div class="ic">${m.who==="me"?AI_ICON.user:AI_ICON.bot}</div>
+      <div class="b">${m.html}</div></div>`).join("");
+    /* คำถามแนะนำจัดกลุ่มตามเรื่อง ช่วยให้ผู้ใช้เห็นขอบเขตที่ถามได้โดยไม่ต้องเดา */
+    const groups=aiSuggestGroups().map(g=>`<div class="grp"><div class="lb2">${esc(g.t)}</div>
+      ${g.q.map(q=>`<span class="chip" data-ai="ask" data-q="${esc(q)}">${esc(q)}</span>`).join("")}</div>`).join("");
+    return `${msgs}${groups}`;
+  }
+  if(AI.tab==="help"){
+    const rows=(NAV[S.role]||[]).map(k=>`<li><b>${esc(NAV_LABEL[k]||k)}</b> — ${esc({
+      dashboard:"ภาพรวมและผลวิเคราะห์รายบุคคล",users:"จัดการบัญชีผู้ใช้ ชื่อผู้ใช้ และรหัสผ่าน",
+      approvals:"ตรวจสอบและรับรองสิทธิ์ผู้สมัคร",framework:"ตั้งค่าสมรรถนะและตัวชี้วัดรายชั้นปี",
+      itemq:"วิเคราะห์คุณภาพข้อสอบด้วย CTT และ IRT",psychometrics:"พารามิเตอร์การวัดของตัวชี้วัด",
+      assess:"บันทึกผลการประเมินรายสมรรถนะ",students:"รายชื่อนักศึกษาในขอบเขตของท่าน",
+      portfolio:"แฟ้มสะสมงานและการตรวจหลักฐาน",myladder:"พัฒนาการรายสมรรถนะของตนเอง",
+      analytics:"ภาพรวมระดับชั้นปีและสาขา",diagnostic:"รายงานวินิจฉัยรายบุคคล",
+      progress:"ความก้าวหน้ารายบุคคลทุกรอบ",profile:"ข้อมูลส่วนตัวและความปลอดภัย",
+      edm:"แบบจำลองทำนายความเสี่ยง",xai:"คำอธิบายแบบจำลองและความเป็นธรรม",
+      irr:"ความสอดคล้องระหว่างผู้ประเมิน",exam:"แบบทดสอบวัดสมรรถนะ",reports:"สร้างและดาวน์โหลดรายงาน"
+    }[k]||"—")}</li>`).join("");
+    /* ปุ่มซิงก์ย้ายมาอยู่ที่นี่ หลังจากถอดแถบสถานะที่แสดงตลอดเวลาออก
+       ผู้ใช้ยังสั่งดึงข้อมูลใหม่ได้โดยไม่ต้องมีกล่องลอยบังหน้าจอ */
+    const tools=(typeof liveOn==="function"&&liveOn())
+      ? `<div class="grp"><div class="lb2">เครื่องมือ</div>
+          <span class="chip" data-ai="sync">ดึงข้อมูลจากฐานข้อมูลใหม่</span>
+          <span class="chip" data-ai="reset">คืนตำแหน่งปุ่มผู้ช่วย</span></div>`
+      : `<div class="grp"><div class="lb2">เครื่องมือ</div>
+          <span class="chip" data-ai="reset">คืนตำแหน่งปุ่มผู้ช่วย</span></div>`;
+    return `<p>เมนูที่ท่านใช้ได้ในบทบาท <b>${esc(ROLE_TH[S.role]||S.role)}</b></p>
+      <ul style="margin:.4rem 0 0;padding-left:1.1rem">${rows}</ul>
+      <p class="hint" style="margin-top:.7rem">เคล็ดลับ: ลากปุ่มผู้ช่วยหรือแถบหัวหน้าต่างนี้
+        เพื่อย้ายไปมุมอื่นได้ หากบังปุ่มบนหน้าจอ</p>${tools}`;
+  }
+  if(AI.tab==="comp"){
+    const y=S.role==="Student"?myUser().year:S.year;
+    const rows=activeComps(FW,y).map(c=>{
+      const cf=cfgOf(FW,y,c.id);
+      const v=S.role==="Student"?compScore(FW,myUser().id,c,y):null;
+      return `<tr><td style="font-size:.8rem">${esc(c.code)} ${esc(c.th)}</td>
+        <td class="num">${cf.target}</td>${S.role==="Student"?`<td class="num">${fmt(v)}</td>`:""}</tr>`;
+    }).join("");
+    return `<p>สมรรถนะที่เปิดใช้ใน${esc(yearOf(FW,y).label)} · ${SCORE_RULE}</p>
+      <table class="tight"><thead><tr><th>สมรรถนะ</th><th class="num">เป้าหมาย</th>
+      ${S.role==="Student"?"<th class=num>ของท่าน</th>":""}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  if(AI.tab==="search"){
+    const q=String(AI.q||"").trim().toLowerCase();
+    if(!q) return `<p>พิมพ์คำค้นด้านล่างเพื่อค้นหาสมรรถนะ ตัวชี้วัด หรือผู้ใช้ในขอบเขตสิทธิ์ของท่าน</p>`;
+    const comps=FW.competencies.filter(c=>c.th.toLowerCase().includes(q)||String(c.code).toLowerCase().includes(q)).slice(0,6);
+    const y=S.role==="Student"?myUser().year:S.year;
+    const inds=allInds(FW,y).filter(i=>String(i.th).toLowerCase().includes(q)).slice(0,6);
+    const users=(S.role==="Student"?[]:visStudents().filter(u=>
+      u.name.toLowerCase().includes(q)||String(u.code).toLowerCase().includes(q))).slice(0,6);
+    const sec=(t,arr)=>arr.length?`<div style="margin-top:.5rem"><b>${t}</b><ul style="margin:.2rem 0 0;padding-left:1.1rem">${arr.join("")}</ul></div>`:"";
+    const out=sec("สมรรถนะ",comps.map(c=>`<li>${esc(c.code)} ${esc(c.th)}</li>`))
+      +sec("ตัวชี้วัด",inds.map(i=>`<li>${esc(i.th)} <span class="sub">${esc(i.comp.code)}</span></li>`))
+      +sec("นักศึกษา",users.map(u=>`<li>${esc(u.name)} <span class="sub">${esc(u.code)} · ${esc(u.program||"")}</span></li>`));
+    return out||`<p>ไม่พบผลลัพธ์สำหรับ "${esc(q)}"</p>`;
+  }
+  return `<p><b>คู่มือการใช้ระบบโดยย่อ</b></p>
+    <ol style="margin:.3rem 0 0;padding-left:1.15rem">
+      <li>เข้าสู่ระบบด้วย<b>อีเมลหรือชื่อผู้ใช้</b> พร้อมรหัสผ่าน (อย่างน้อย ${PW_MIN} อักขระ)</li>
+      <li>เมนูด้านซ้ายเปลี่ยนตามบทบาท ระบบแสดงเฉพาะสิ่งที่ท่านมีสิทธิ์ใช้</li>
+      <li>คะแนนทุกหน้าคำนวณด้วยกติกาเดียวกัน คือ ${esc(SCORE_RULE)}</li>
+      <li>ผู้ประเมินบันทึกผลที่เมนู <b>การประเมิน</b> เลือกนักศึกษา สมรรถนะ แล้วให้ระดับครบทุกตัวชี้วัด</li>
+      <li>นักศึกษาดูผลวิเคราะห์รายบุคคลได้ที่<b>แดชบอร์ด</b> และพัฒนาการรายด้านที่ <b>พัฒนาการของฉัน</b></li>
+      <li>รายงานทุกฉบับมีผู้ออกเอกสาร วันที่ และเวอร์ชันกรอบสมรรถนะกำกับไว้</li>
+      <li>ระหว่างบันทึกข้อมูลจะมีแถบแจ้ง <b>⏳ กำลังบันทึกข้อมูล…</b> และแจ้งผลเมื่อสำเร็จ</li>
+    </ol>
+    <p class="hint" style="margin-top:.6rem">ผู้ช่วยนี้ตอบจากข้อมูลในระบบเท่านั้น ไม่ได้ส่งข้อมูลผู้เรียนออกไปยังบริการภายนอก</p>`;
+}
+
+function renderAI(){
+  if(!S.user){                       // ยังไม่เข้าสู่ระบบ ไม่แสดงผู้ช่วย
+    const w=document.getElementById("aiwrap"), p=document.getElementById("aipanel");
+    if(w) w.remove(); if(p) p.remove();
+    return;
+  }
+  ensureAppStyles();
+  let wrap=document.getElementById("aiwrap"), panel=document.getElementById("aipanel");
+
+  if(AI.open){
+    if(wrap) wrap.style.display="none";
+    if(!panel){ panel=document.createElement("div"); panel.id="aipanel"; document.body.appendChild(panel); }
+    panel.style.display="flex";
+    /* ลากหน้าต่างได้จากแถบหัว ยกเว้นตรงปุ่มปิด */
+    aiDraggable(panel,tg=>!!tg.closest(".hd")&&!tg.closest("button"));
+    panel.innerHTML=`
+      <div class="hd">
+        <span class="av" style="width:2.2rem;height:2.2rem">${AI_ICON.bot.replace('<svg','<svg width="20" height="20"')}</span>
+        <div><b>ผู้ช่วยอัจฉริยะ</b>
+          <span class="sub2"><i></i>พร้อมใช้งาน · ตอบจากข้อมูลจริงในระบบ</span></div>
+        <button data-ai="close" aria-label="ปิดหน้าต่างผู้ช่วย" title="ปิด">
+          ${AI_ICON.close.replace('<svg','<svg width="17" height="17"')}</button></div>
+      <div class="tabs2">${AI_TABS.map(([k,l,ic])=>
+        `<button class="${AI.tab===k?"on":""}" data-ai="tab" data-k="${k}">${AI_ICON[ic]}<span>${l}</span></button>`).join("")}</div>
+      <div class="bd" id="aibd">${aiBody()}</div>
+      ${(AI.tab==="chat"||AI.tab==="search")?`<div class="ft">
+        <input id="aiq" placeholder="${AI.tab==="chat"?"พิมพ์คำถามของท่าน…":"พิมพ์คำค้น เช่น ชื่อสมรรถนะ หรือชื่อนักศึกษา"}"
+          value="${esc(AI.tab==="search"?(AI.q||""):"")}">
+        <button data-ai="send" aria-label="${AI.tab==="chat"?"ส่งคำถาม":"ค้นหา"}" title="${AI.tab==="chat"?"ส่ง":"ค้นหา"}">
+          ${(AI.tab==="chat"?AI_ICON.send:AI_ICON.find).replace('<svg','<svg width="17" height="17"')}</button></div>`:""}`;
+    const bd=document.getElementById("aibd"); if(bd&&AI.tab==="chat") bd.scrollTop=bd.scrollHeight;
+    const q=document.getElementById("aiq"); if(q) q.focus();
+    aiApplyPos(panel);
+  } else {
+    if(panel) panel.style.display="none";
+    if(!wrap){ wrap=document.createElement("div"); wrap.id="aiwrap"; document.body.appendChild(wrap); }
+    wrap.style.display="flex";
+    wrap.innerHTML=`<div id="aibubble" data-ai="open">
+        <b>ผู้ช่วยอัจฉริยะ</b>ถามเรื่องคะแนน สมรรถนะ หรือวิธีใช้ระบบได้เลย</div>
+      <button id="aibtn" data-ai="open" aria-label="เปิดผู้ช่วยอัจฉริยะ · ลากเพื่อย้ายตำแหน่ง"
+        title="กดเพื่อเปิด · ลากเพื่อย้ายตำแหน่ง">
+        ${AI_ICON.bot.replace('<svg','<svg width="26" height="26"')}<span class="dot"></span></button>`;
+    /* ลากย้ายได้ทั้งจากปุ่มและจากกล่องข้อความ */
+    aiDraggable(wrap,()=>true);
+    aiApplyPos(wrap);
+  }
+}
+
+document.addEventListener("click",e=>{
+  const el=e.target.closest("[data-ai]"); if(!el) return;
+  e.stopPropagation(); e.preventDefault();
+  if(AI.dragging) return;          // เพิ่งลากเสร็จ ไม่ถือเป็นการกดเปิด
+  const a=el.dataset.ai;
+  if(a==="open"){
+    AI.open=true;
+    if(!AI.greeted){
+      AI.greeted=true;
+      aiSay("ai",`สวัสดีครับ ${esc(S.user?S.user.name:"")} ผมเป็นผู้ช่วยของระบบ PTRU
+        ถามเรื่องคะแนน สมรรถนะ หรือวิธีใช้ระบบได้เลยครับ`);
+    }
+  }
+  else if(a==="close") AI.open=false;
+  else if(a==="tab") AI.tab=el.dataset.k;
+  else if(a==="ask"){ const q=el.dataset.q; aiSay("me",esc(q)); aiSay("ai",aiAnswer(q)); }
+  else if(a==="sync"){ if(typeof liveSyncAll==="function") liveSyncAll(true); }
+  else if(a==="reset"){ AI.pos=null; aiSavePos(); }
+  else if(a==="send"){
+    const inp=document.getElementById("aiq"); const v=inp?inp.value.trim():"";
+    if(!v) return;
+    if(AI.tab==="search"){ AI.q=v; }
+    else { aiSay("me",esc(v)); aiSay("ai",aiAnswer(v)); if(inp) inp.value=""; }
+  }
+  renderAI();
+},true);
+
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter") return;
+  if(e.target&&e.target.id==="aiq"){
+    e.preventDefault();
+    const btn=document.querySelector('#aipanel [data-ai="send"]');
+    if(btn) btn.click();
+  }
+});
+
+aiLoadPos();
+
+/* ---------- 27. ข้อมูลโครงการวิจัย (ปุ่มมุมล่างซ้ายของหน้าแรก) ----------
+   แสดงเฉพาะตอนยังไม่เข้าสู่ระบบ เพื่อบอกที่มาของทุนและคณะผู้วิจัยแก่ผู้เยี่ยมชม
+   ซ่อนระหว่างสมัครสมาชิกและลืมรหัสผ่าน จะได้ไม่บังแบบฟอร์มบนจอแคบ
+   รูปนักวิจัยฝังเป็น data URI ไว้ในไฟล์เดียวกัน จึงแสดงได้ทั้งบน Apps Script
+   และตอนเปิดไฟล์จากเครื่องโดยตรง ไม่ต้องพึ่งไฟล์ภายนอกหรือลิงก์ Drive */
+const RS_PHOTO={
+  chaimongkol:"data:image/jpeg;base64,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",
+  anuphum:"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAcFBQYFBAcGBQYIBwcIChELCgkJChUPEAwRGBUaGRgVGBcbHichGx0lHRcYIi4iJSgpKywrGiAvMy8qMicqKyr/2wBDAQcICAoJChQLCxQqHBgcKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKir/wAARCAIPAZADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6RooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiqeparZaRatcahOsMagnJ5Jx6AcmuOb4yeFI7popZ7iNVGfNaL5T9Oc/pQB3jMFGTWXf6q1rbyXBX91EpYr/ABEAZ4zXlPir41wOCugIPLKMpml++CR1Azx25z2ryrVvHfiHU8/adVnbgj5GwMHrwKpID6MPjvR/7KW7ku5U3oXEZ+VjgZP5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"
+};
+const RESEARCH={
+  fund:"กองทุนสนับสนุนงานวิจัย มหาวิทยาลัยราชภัฏเลย",
+  fundYear:"ประจำปีงบประมาณ 2569",
+  titleTh:"การพัฒนานวัตกรรมการวัดและประเมินผลการเรียนรู้ฐานสมรรถนะด้วยดิจิทัลอัจฉริยะตามรูปแบบการผลิตครู PTRU MODEL สำหรับนักศึกษาวิชาชีพครู คณะครุศาสตร์ มหาวิทยาลัยราชภัฏเลย",
+  titleEn:"Development of an Intelligent Digital Competency-Based Learning Assessment Innovation Based on the PTRU Teacher Production Model",
+  innovation:"PTRU-DCAI Innovation Model (PTRU Digital Competency Assessment Intelligence Model)",
+  innovationSub:"“นวัตกรรม PTRU-DCAI ไม่ได้หยุดอยู่ที่การวัดและให้คะแนน แต่เปลี่ยนผลการประเมินให้เป็นข้อมูลอัจฉริยะที่สามารถวิเคราะห์และวินิจฉัยสมรรถนะของผู้เรียน แล้วใช้ AI ให้ Feedback และกำหนดแนวทางพัฒนารายบุคคล ก่อนประเมินซ้ำเพื่อดูความก้าวหน้า” “Measure → Diagnose → Develop → Grow” วัด → วินิจฉัย → พัฒนา → เติบโต",
+  people:[
+    {role:"หัวหน้าโครงการวิจัย", name:"ดร.ชัยมงคล ปินะสา",
+     pos:"อาจารย์ประจำหลักสูตรครุศาสตรมหาบัณฑิต",
+     unit:"สาขาวิชาวิจัยนวัตกรรมทางการศึกษา คณะครุศาสตร์ มหาวิทยาลัยราชภัฏเลย",
+     degree:"ปร.ด. (นวัตกรรมทางการวัดผลการเรียนรู้)",
+     tel:"095-663-7746", photo:RS_PHOTO.chaimongkol},
+    {role:"นักวิจัยร่วม", name:"ดร.อนุภูมิ คำยัง",
+     pos:"อาจารย์ประจำหลักสูตรครุศาสตรมหาบัณฑิต",
+     unit:"สาขาวิชาวิจัยนวัตกรรมทางการศึกษา คณะครุศาสตร์ มหาวิทยาลัยราชภัฏเลย",
+     degree:"ปร.ด. (วิจัย วัดผล และสถิติการศึกษา)",
+     tel:"086-222-2001", photo:RS_PHOTO.anuphum}
+  ]
+};
+const RS_ICON={
+  fund:`<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+    stroke-linecap="round" stroke-linejoin="round" class="fundic" aria-hidden="true">
+    <circle cx="12" cy="8" r="6"></circle><path d="M15.6 13.4 17 22l-5-3-5 3 1.4-8.6"></path></svg>`,
+  book:`<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"></path>
+    <path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H20"></path><path d="M8.5 7h7"></path></svg>`,
+  close:`<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`
+};
+/* กรอบแนวคิดฉบับตัวอักษรตามต้นฉบับของโครงการ เก็บไว้ให้คัดลอกไปใช้ในเอกสารได้ */
+const RS_ASCII=[
+"                    PTRU MODEL",
+"                         │",
+"                         ▼",
+"              ┌──────────────────┐",
+"              │ PTRU-DCAI MODEL  │",
+"              └──────────────────┘",
+"                         │",
+"       ┌─────────────────┼─────────────────┐",
+"       ▼                 ▼                 ▼",
+" Competency          Digital           Assessment",
+" Framework           Evidence           Engine",
+"       │                 │                 │",
+"       └─────────────────┼─────────────────┘",
+"                         ▼",
+"                  AI / Analytics",
+"                         │",
+"                         ▼",
+"                Feedback & Dashboard",
+"                         │",
+"                         ▼",
+"                Competency Growth"
+].join("\n");
+
+/** แผนภาพกรอบแนวคิดการออกแบบ วาดด้วย SVG แทนแผนภาพอักษร
+    เพราะแผนภาพอักษรจะเสียรูปเมื่อจอแคบหรือเมื่อฟอนต์ไม่ใช่แบบความกว้างคงที่ */
+function rsDiagram(){
+  const box=(x,y,w,h,lines,cls)=>{
+    const cx=x+w/2, top=y+h/2-(lines.length-1)*8.5;
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="${cls}"></rect>`+
+      lines.map((t,i)=>`<text x="${cx}" y="${top+i*17}" class="${cls}">${t}</text>`).join("");
+  };
+  const arrow=(x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#rs-ar)"></line>`;
+  const line=(x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>`;
+  return `<svg class="dia" viewBox="0 0 620 470" role="img"
+      aria-label="กรอบแนวคิดการออกแบบ เริ่มจาก PTRU MODEL สู่ PTRU-DCAI MODEL แตกออกเป็นกรอบสมรรถนะ หลักฐานดิจิทัล และกลไกการประเมิน แล้วรวมเข้าสู่ปัญญาประดิษฐ์และการวิเคราะห์ ส่งต่อเป็นข้อมูลป้อนกลับและแดชบอร์ด นำไปสู่การเติบโตของสมรรถนะ">
+    <defs><marker id="rs-ar" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="5.5" markerHeight="5.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 Z"></path></marker></defs>
+    ${box(225,12,170,38,["PTRU MODEL"],"a")}
+    ${arrow(310,50,310,74)}
+    ${box(200,76,220,40,["PTRU-DCAI MODEL"],"b")}
+    ${line(310,116,310,140)}${line(105,140,515,140)}
+    ${arrow(105,140,105,168)}${arrow(310,140,310,168)}${arrow(515,140,515,168)}
+    ${box(20,170,170,52,["Competency","Framework"],"c")}
+    ${box(225,170,170,52,["Digital","Evidence"],"c")}
+    ${box(430,170,170,52,["Assessment","Engine"],"c")}
+    ${line(105,222,105,250)}${line(310,222,310,250)}${line(515,222,515,250)}
+    ${line(105,250,515,250)}${arrow(310,250,310,278)}
+    ${box(210,280,200,40,["AI / Analytics"],"b")}
+    ${arrow(310,320,310,344)}
+    ${box(185,346,250,40,["Feedback & Dashboard"],"c")}
+    ${arrow(310,386,310,410)}
+    ${box(190,412,240,42,["Competency Growth"],"g")}
+  </svg>`;
+}
+
+function rsPerson(p){
+  const dial="tel:"+String(p.tel).replace(/[^\d+]/g,"");
+  return `<div class="person">
+    <img src="${photoSrc(p.photo)}" alt="ภาพถ่าย ${esc(p.name)}">
+    <div class="who">
+      <span class="role">${esc(p.role)}</span>
+      <div class="nm">${esc(p.name)}</div>
+      <div class="af">${esc(p.pos)}<br>${esc(p.unit)}</div>
+      <div class="dl">คุณวุฒิ: ${esc(p.degree)}<br>
+        โทรศัพท์: <a href="${dial}">${esc(p.tel)}</a></div>
+    </div></div>`;
+}
+
+function rsBody(){
+  const R=RESEARCH;
+  return `<div class="sec">
+      <div class="fund">${RS_ICON.fund}
+        <div><b>ได้รับทุนสนับสนุนจาก${esc(R.fund)}</b><br>${esc(R.fundYear)}</div></div>
+    </div>
+    <div class="sec">
+      <div class="lb">ชื่อโครงการวิจัย</div>
+      <div class="th-title">${esc(R.titleTh)}</div>
+      <div class="en-title">${esc(R.titleEn)}</div>
+    </div>
+    <div class="sec">
+      <div class="lb">ชื่อนวัตกรรม</div>
+      <div class="innov"><b>${esc(R.innovation)}</b><br>
+        <span class="sub3">${esc(R.innovationSub)}</span></div>
+    </div>
+    <div class="sec">
+      <div class="lb">Design Framework</div>
+      ${rsDiagram()}
+      <details><summary>ดูกรอบแนวคิดแบบข้อความสำหรับคัดลอกไปใช้</summary>
+        <pre>${esc(RS_ASCII)}</pre></details>
+    </div>
+    <div class="sec">
+      <div class="lb">คณะผู้วิจัย</div>
+      <div class="people">${R.people.map(rsPerson).join("")}</div>
+    </div>`;
+}
+
+const RS_UI={open:false};
+/** หน้าแรกเท่านั้น ไม่แสดงบนหน้าสมัครสมาชิกหรือหน้าลืมรหัสผ่าน */
+function rsOnFront(){
+  return !S.user && ["register","regstudent","forgot"].indexOf(S.screen)<0;
+}
+function renderResearch(){
+  const btn0=document.getElementById("rsbtn"), md0=document.getElementById("rsmodal");
+  if(!rsOnFront()){
+    if(btn0) btn0.remove();
+    if(md0) md0.remove();
+    RS_UI.open=false;
+    return;
+  }
+  ensureAppStyles();
+  let btn=btn0;
+  if(!btn){
+    btn=document.createElement("button");
+    btn.id="rsbtn"; btn.type="button"; btn.dataset.rs="open";
+    btn.setAttribute("title","ดูข้อมูลโครงการวิจัยและคณะผู้วิจัย");
+    btn.innerHTML=`<span class="ic">${RS_ICON.book}</span>
+      <span class="tx"><b>โครงการวิจัย</b>
+        <i>ทุนสนับสนุนงานวิจัย มรภ.เลย ปีงบประมาณ 2569</i></span>`;
+    document.body.appendChild(btn);
+  }
+  btn.style.display=RS_UI.open?"none":"flex";
+
+  let md=md0;
+  if(RS_UI.open){
+    if(!md){
+      md=document.createElement("div");
+      md.id="rsmodal"; md.dataset.rs="backdrop";
+      md.setAttribute("role","dialog"); md.setAttribute("aria-modal","true");
+      md.setAttribute("aria-labelledby","rs-h");
+      md.innerHTML=`<div class="card">
+        <div class="hd">
+          <span class="av">${RS_ICON.book}</span>
+          <div><b id="rs-h">โครงการวิจัยที่ได้รับทุนสนับสนุน</b>
+            <span>${esc(RESEARCH.fund)} ${esc(RESEARCH.fundYear)}</span></div>
+          <button type="button" data-rs="close" aria-label="ปิดหน้าต่างข้อมูลโครงการวิจัย"
+            title="ปิด">${RS_ICON.close}</button></div>
+        <div class="bd">${rsBody()}</div></div>`;
+      document.body.appendChild(md);
+      const c=md.querySelector('[data-rs="close"]'); if(c) c.focus();
+    }
+    md.style.display="flex";
+  } else if(md){
+    md.remove();
+  }
+}
+
+document.addEventListener("click",e=>{
+  const el=e.target.closest("[data-rs]"); if(!el) return;
+  const a=el.dataset.rs;
+  /* คลิกบนเนื้อหาของหน้าต่างต้องไม่ปิด ปิดเฉพาะเมื่อคลิกที่พื้นหลังจริง ๆ */
+  if(a==="backdrop"&&e.target!==el) return;
+  e.stopPropagation(); e.preventDefault();
+  RS_UI.open=(a==="open");
+  renderResearch();
+  if(!RS_UI.open){ const b=document.getElementById("rsbtn"); if(b) b.focus(); }
+},true);
+
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape"||!RS_UI.open) return;
+  RS_UI.open=false; renderResearch();
+  const b=document.getElementById("rsbtn"); if(b) b.focus();
+});
+
+/* วาดผู้ช่วยและปุ่มโครงการวิจัยใหม่ทุกครั้งที่หน้าจอหลักเปลี่ยน
+   ผู้ช่วยแสดงเฉพาะหลังเข้าสู่ระบบ ส่วนปุ่มโครงการวิจัยแสดงเฉพาะหน้าแรกก่อนเข้าสู่ระบบ */
+const renderBase=render;
+render=function(){
+  renderBase();
+  try{ renderAI(); }catch(e){ console.warn("[PTRU] AI:",e); }
+  try{ renderResearch(); }catch(e){ console.warn("[PTRU] research:",e); }
+};
 
 render();
 </script>
