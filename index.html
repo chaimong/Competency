@@ -604,17 +604,10 @@ function buildFramework(){
 }
 const ITEMS_PER_COMP_DEF=30;
 const EXAM_MIN_DEF=45;
-/* ข้อความเดียวที่ใช้ทุกจุดที่ปฏิเสธการแก้ไขเพราะถูกล็อก จะได้สื่อสารตรงกันทั้งระบบ */
-const LOCK_MSG="รายการนี้ถูกล็อกไว้ ต้องปลดล็อกก่อนจึงจะแก้ไขได้";
 let FW = buildFramework();
 
 const yearOf = (fw,y) => fw.years.find(x=>x.year===y) || fw.years[0];
-const cfgOf  = (fw,y,cid) => yearOf(fw,y).config[cid] || {active:false,target:3,locked:false,test:{open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF},indicators:[]};
-/** ชั้นปีถูกล็อกทั้งชั้นปีหรือไม่ */
-const yearLocked = (fw,y) => !!yearOf(fw,y).locked;
-/** สมรรถนะนี้แก้ไขไม่ได้หรือไม่ นับทั้งการล็อกทั้งชั้นปีและการล็อกรายสมรรถนะ
-    ใช้ตัดสินทั้งการปิดปุ่มบนหน้าจอและการปฏิเสธคำสั่งในตัวจัดการเหตุการณ์ */
-const compLocked = (fw,y,cid) => yearLocked(fw,y) || !!cfgOf(fw,y,cid).locked;
+const cfgOf  = (fw,y,cid) => yearOf(fw,y).config[cid] || {active:false,target:3,test:{open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF},indicators:[]};
 /** ตัวเข้าถึงค่ากำหนดรายชั้นปีสำหรับ "การแก้ไข"
     cfgOf คืนวัตถุตั้งต้นชั่วคราวเมื่อชั้นปีนั้นยังไม่มีระเบียนของสมรรถนะ
     การเขียนค่าลงไปจึงหายไปเงียบ ๆ พร้อมวัตถุที่ถูกทิ้ง เป็นเหตุให้ผู้ดูแลตั้งค่าแล้วไม่มีผล
@@ -623,11 +616,10 @@ function cfgEdit(y,cid){
   const yc=yearOf(FW,y);
   if(!yc.config[cid]){
     const ys=(typeof YEAR_STAGES!=="undefined"&&YEAR_STAGES.find(s=>s.year===y))||{target:3};
-    yc.config[cid]={active:false,target:ys.target||3,locked:false,
+    yc.config[cid]={active:false,target:ys.target||3,
       test:{open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF},indicators:[]};
   }
   const cf=yc.config[cid];
-  if(cf.locked===undefined) cf.locked=false;
   if(!cf.test) cf.test={open:true,n:ITEMS_PER_COMP_DEF,min:EXAM_MIN_DEF};
   if(cf.test.n===undefined)   cf.test.n=ITEMS_PER_COMP_DEF;
   if(cf.test.min===undefined) cf.test.min=EXAM_MIN_DEF;
@@ -1886,11 +1878,16 @@ function userForm(u){
 }
 
 /* ---------- 14. หน้ากรอบสมรรถนะ ---------- */
+/** แถบเลือกชั้นปี พร้อมจำนวนสมรรถนะที่เปิดใช้ของแต่ละชั้นปี
+    ผู้ใช้จึงเปรียบเทียบได้ทันทีว่าชั้นปีใดเปิดใช้กี่สมรรถนะโดยไม่ต้องกดเข้าไปดูทีละชั้นปี */
 function yearStrip(y,act,note){
-  const btns=FW.years.map(yy=>`<button class="${yy.year===y?"on":""}" data-act="${act}" data-v="${yy.year}">${yy.year}</button>`).join("");
+  const btns=FW.years.map(yy=>
+    `<button class="${yy.year===y?"on":""}" data-act="${act}" data-v="${yy.year}"
+      title="${esc(yy.label)} · เปิดใช้ ${activeComps(FW,yy.year).length} จาก ${FW.competencies.length} สมรรถนะ">${yy.year}</button>`
+  ).join("");
   const yc=yearOf(FW,y);
   return `<div class="bar-strip"><span class="lb">ชั้นปี</span>${btns}
-    <span class="far">${note||`${yc.label} · ระยะ${yc.stage} · ${activeComps(FW,y).length} สมรรถนะที่เปิดใช้`}</span></div>`;
+    <span class="far">${note||`${yc.label} · ระยะ${yc.stage} · เปิดใช้ ${activeComps(FW,y).length} จาก ${FW.competencies.length} สมรรถนะ`}</span></div>`;
 }
 function frameworkPage(readOnly,roMaster){
   if(roMaster===undefined) roMaster=readOnly;
@@ -1904,31 +1901,27 @@ function frameworkPage(readOnly,roMaster){
   else body=fwIndTab(y,readOnly,S.fwTab==="rubric");
   const gov=(!readOnly&&roMaster)?`<div class="notebox">ท่านมีสิทธิ์ตั้งค่ากรอบสมรรถนะรายชั้นปีได้เต็มรูปแบบ ทั้งการเปิดปิดสมรรถนะ ระดับเป้าหมาย ตัวชี้วัด และเกณฑ์การประเมิน
     ส่วนแท็บ "สมรรถนะหลัก" และ "ระดับสมรรถนะ" เป็นข้อมูลกลางที่ใช้ร่วมกันทุกสาขาวิชาและทุกชั้นปี จึงสงวนสิทธิ์การแก้ไขไว้ที่ประธานหลักสูตรและผู้ดูแลระบบ</div>`:"";
-  return `<div class="stack">${yearStrip(y,"setyear")}${gov}
+  return `<div class="stack">${yearStrip(y,"setyear")}
+    ${gov}
     ${S.msg?`<div class="notebox">${esc(S.msg)}</div>`:""}
     <div class="tabs">${tabs}</div>${body}</div>`;
 }
 function fwYearTab(y,ro){
   const yc=yearOf(FW,y);
-  const yLock=yearLocked(FW,y);
-  const nLock=FW.competencies.filter(c=>cfgOf(FW,y,c.id).locked).length;
+  const open=activeComps(FW,y).length;
   const rows=FW.competencies.map(c=>{
     /* ต้องใช้ตัวเข้าถึงแบบเขียนได้ เพราะแถวนี้เติมค่าตั้งต้นของ test ให้สมรรถนะที่ยังไม่มีระเบียน
        ถ้าใช้ cfgOf ค่าที่เติมจะตกอยู่กับวัตถุชั่วคราว แล้วช่องที่ผู้ใช้กรอกก็บันทึกไม่ติด */
     const v=cfgEdit(y,c.id);
     v.test.open=true;
-    /* ล็อกรายสมรรถนะ หรือถูกล็อกทั้งชั้นปี ก็แก้ไขไม่ได้เหมือนกัน */
-    const lk=yLock||!!v.locked;
-    const dis=(ro||lk)?"disabled":"";
+    const dis=ro?"disabled":"";
     const tsel=FW.levels.map((l,k)=>`<option value="${k+1}" ${v.target===k+1?"selected":""}>${k+1}</option>`).join("");
-    return `<tr style="${v.active?"":"opacity:.5"}${lk?";background:var(--surface-2)":""}">
-      <td class="qcell"><input type="checkbox" ${v.active?"checked":""} ${dis} data-act="fwactive" data-v="${c.id}"></td>
-      <td class="num">${ro?(v.locked?"🔒":"")
-        :`<button class="btn ${v.locked?"btn-primary":"btn-ghost"} btn-sm" style="padding:.18rem .5rem"
-            data-act="fwlock" data-v="${c.id}" ${yLock?"disabled style=opacity:.45":""}
-            title="${v.locked?"ปลดล็อกสมรรถนะนี้":"ล็อกสมรรถนะนี้ไม่ให้แก้ไข"}">${v.locked?"🔒":"🔓"}</button>`}</td>
+    return `<tr style="${v.active?"":"opacity:.55;background:var(--surface-2)"}">
+      <td class="qcell"><input type="checkbox" ${v.active?"checked":""} ${dis} data-act="fwactive" data-v="${c.id}"
+        title="${v.active?"กดเพื่อปิดสมรรถนะนี้ในชั้นปีนี้":"กดเพื่อเปิดใช้สมรรถนะนี้ในชั้นปีนี้"}"></td>
+      <td>${v.active?`<span class="tag tag-ok">เปิดใช้</span>`:`<span class="tag tag-n">ปิดอยู่</span>`}</td>
       <td><button style="background:none;border:none;padding:0;text-align:left" data-act="fwpick" data-v="${c.id}">${c.code} · ${esc(c.th)}</button>
-        ${lk?`<div class="sub">${yLock?"ล็อกทั้งชั้นปี":"ล็อกไว้ แก้ไขไม่ได้"}</div>`:""}</td>
+        ${v.active?"":`<div class="sub">ไม่ปรากฏในแบบประเมินของ${esc(yc.label)}</div>`}</td>
       <td><span class="tag tag-a">${c.ptru}</span></td>
       <td class="num">${v.indicators.length}</td>
       <td class="num"><select class="inp inp-xs" ${dis} data-act="fwtarget" data-v="${c.id}">${tsel}</select></td>
@@ -1939,27 +1932,56 @@ function fwYearTab(y,ro){
   }).join("");
   const copy=FW.years.filter(x=>x.year!==y).map(x=>`<option value="${x.year}">ชั้นปีที่ ${x.year}</option>`).join("");
   const action=ro?"":`<div class="row">
-    <button class="btn ${yLock?"btn-primary":"btn-ghost"} btn-sm" data-act="fwylock"
-      title="${yLock?"ปลดล็อกทั้งชั้นปีเพื่อกลับมาแก้ไขได้":"ล็อกทั้งชั้นปี ห้ามแก้ไขทุกค่า"}">
-      ${yLock?"🔒 ปลดล็อกชั้นปีนี้":"🔓 ล็อกทั้งชั้นปี"}</button>
-    <select class="inp" style="width:auto" ${yLock?"disabled":""} data-act="fwcopy"><option value="">คัดลอกจากชั้นปี…</option>${copy}</select>
-    <button class="btn btn-ghost btn-sm" ${yLock?"disabled style=opacity:.45":""} data-act="fwgenyear">สร้างตัวชี้วัดทั้งชั้นปีอัตโนมัติ</button></div>`;
-  const banner=yLock
-    ? `<div class="alert alert-warn" style="margin:0 0 .9rem">🔒 <b>${esc(yc.label)}ถูกล็อกไว้ทั้งชั้นปี</b>
-        ทุกค่าในหน้านี้แก้ไขไม่ได้ รวมถึงตัวชี้วัดและเกณฑ์การประเมิน
-        ฝั่งเซิร์ฟเวอร์ปฏิเสธการเขียนทับด้วย จึงกันได้แม้เปิดหน้าค้างไว้ก่อนล็อก
-        กด "ปลดล็อกชั้นปีนี้" เมื่อต้องการแก้ไข</div>`
-    : (nLock?`<div class="alert alert-info" style="margin:0 0 .9rem">ล็อกไว้ ${nLock} สมรรถนะ แถวที่ล็อกจะแก้ไขไม่ได้จนกว่าจะปลดล็อก</div>`:"");
+    <button class="btn btn-ghost btn-sm" data-act="fwallon">เปิดใช้ทุกสมรรถนะ</button>
+    <button class="btn btn-ghost btn-sm" data-act="fwalloff">ปิดทุกสมรรถนะ</button>
+    <select class="inp" style="width:auto" data-act="fwcopy"><option value="">คัดลอกจากชั้นปี…</option>${copy}</select>
+    <button class="btn btn-ghost btn-sm" data-act="fwgenyear">สร้างตัวชี้วัดทั้งชั้นปีอัตโนมัติ</button></div>`;
   return `<div class="stack">${card(`การตั้งค่า${yc.label}`,
-    `เปิดหรือปิดสมรรถนะ กำหนดระดับเป้าหมาย จำนวนข้อสอบและเวลาสอบ ${ro?"":"ทุกค่าบันทึกลงฐานข้อมูลอัตโนมัติและมีผลกับผู้ประเมินทุกคนทันที"}`,
-    `${banner}
-     <div class="grid g2" style="gap:.7rem;margin-bottom:.9rem">
-      <div class="field" style="margin-top:0"><label>ชื่อชั้นปี</label><input class="inp" value="${esc(yc.label)}" ${(ro||yLock)?"disabled":""} data-act="fwylabel" data-nore></div>
-      <div class="field" style="margin-top:0"><label>ระยะพัฒนาการ</label><input class="inp" value="${esc(yc.stage)}" ${(ro||yLock)?"disabled":""} data-act="fwystage" data-nore></div></div>
-     <div class="scroll-x"><table class="tight"><thead><tr><th style="width:40px">เปิด</th><th style="width:52px">ล็อก</th><th>สมรรถนะ</th><th>PTRU</th><th class="num">ตัวชี้วัด</th><th class="num" style="width:96px">เป้าหมาย</th>
+    `ติ๊กช่อง "เปิด" เพื่อเลือกว่าสมรรถนะใดจะใช้ประเมินใน${yc.label} · ขณะนี้เปิดใช้ ${open} จาก ${FW.competencies.length} สมรรถนะ${ro?"":" · ทุกค่าบันทึกลงฐานข้อมูลอัตโนมัติและมีผลกับผู้ประเมินทุกคนทันที"}`,
+    `<div class="grid g2" style="gap:.7rem;margin-bottom:.9rem">
+      <div class="field" style="margin-top:0"><label>ชื่อชั้นปี</label><input class="inp" value="${esc(yc.label)}" ${ro?"disabled":""} data-act="fwylabel" data-nore></div>
+      <div class="field" style="margin-top:0"><label>ระยะพัฒนาการ</label><input class="inp" value="${esc(yc.stage)}" ${ro?"disabled":""} data-act="fwystage" data-nore></div></div>
+     <div class="scroll-x"><table class="tight" style="min-width:1020px"><thead><tr><th style="width:40px">เปิด</th><th style="width:86px">สถานะ</th><th>สมรรถนะ</th><th>PTRU</th><th class="num">ตัวชี้วัด</th><th class="num" style="width:96px">เป้าหมาย</th>
       <th style="width:220px">แบบทดสอบ</th><th class="num" style="width:78px">จำนวนข้อ</th><th class="num" style="width:78px">นาที</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`,
     action)}
-    ${fwYearImpact(y)}</div>`;
+    ${fwYearImpact(y)}
+    ${fwAllYearsSummary(y)}</div>`;
+}
+/** สรุปการตั้งค่าของทุกชั้นปีในตารางเดียว ใช้ตัวเลขชุดเดียวกับที่หน้าอื่นและฝั่งผู้ประเมินอ่าน
+    ผู้ดูแลจึงตรวจได้ทันทีว่าการตั้งค่าของสี่ชั้นปีสอดคล้องกันหรือไม่ โดยไม่ต้องกดสลับทีละชั้นปี */
+function fwAllYearsSummary(cur){
+  const rows=FW.years.map(yy=>{
+    const y=yy.year, open=activeComps(FW,y), off=FW.competencies.length-open.length;
+    const inds=open.reduce((n,c)=>n+cfgOf(FW,y,c.id).indicators.length,0);
+    const noInd=open.filter(c=>!cfgOf(FW,y,c.id).indicators.length).length;
+    const tAvg=open.length?mean(open.map(c=>cfgOf(FW,y,c.id).target)):null;
+    const nAvg=open.length?mean(open.map(c=>(cfgOf(FW,y,c.id).test||{}).n||ITEMS_PER_COMP_DEF)):null;
+    const mAvg=open.length?mean(open.map(c=>(cfgOf(FW,y,c.id).test||{}).min||EXAM_MIN_DEF)):null;
+    const stu=students().filter(s=>+s.year===y).length;
+    const ok=open.length>0&&noInd===0;
+    return `<tr${y===cur?' style="background:var(--surface-2)"':''}>
+      <td><b>${esc(yy.label)}</b>${y===cur?' <span class="tag tag-a">กำลังดู</span>':''}
+        <div class="sub">ระยะ${esc(yy.stage)}</div></td>
+      <td class="num" style="font-weight:600">${open.length} / ${FW.competencies.length}</td>
+      <td class="num">${off||"—"}</td>
+      <td class="num">${inds}</td>
+      <td class="num">${tAvg===null?"—":fmt(tAvg,1)}</td>
+      <td class="num">${nAvg===null?"—":Math.round(nAvg)}</td>
+      <td class="num">${mAvg===null?"—":Math.round(mAvg)}</td>
+      <td class="num">${stu}</td>
+      <td>${ok?`<span class="tag tag-ok">พร้อมประเมิน</span>`
+        :(!open.length?`<span class="tag tag-risk">ยังไม่เปิดสมรรถนะ</span>`
+                      :`<span class="tag tag-warn">ขาดตัวชี้วัด ${noInd}</span>`)}</td>
+      <td class="num">${y===cur?"":`<button class="btn btn-ghost btn-sm" data-act="setyear" data-v="${y}">ไปตั้งค่า</button>`}</td></tr>`;
+  }).join("");
+  return card("สรุปการตั้งค่าทุกชั้นปี",
+    "ตัวเลขชุดเดียวกับที่ผู้ประเมินและรายงานใช้จริง ตรวจความสอดคล้องของทั้งสี่ชั้นปีได้ในตารางเดียว",
+    `<div class="scroll-x"><table class="tight" style="min-width:940px"><thead><tr>
+      <th>ชั้นปี</th><th class="num" style="width:96px">เปิดใช้</th><th class="num" style="width:70px">ปิด</th>
+      <th class="num" style="width:80px">ตัวชี้วัด</th><th class="num" style="width:96px">เป้าหมายเฉลี่ย</th>
+      <th class="num" style="width:88px">ข้อสอบเฉลี่ย</th><th class="num" style="width:80px">นาทีเฉลี่ย</th>
+      <th class="num" style="width:80px">นักศึกษา</th><th style="width:130px">ความพร้อม</th><th style="width:96px"></th>
+     </tr></thead><tbody>${rows}</tbody></table></div>`,"",false);
 }
 /** ผลของการตั้งค่าที่ผู้ประเมินจะเห็นจริง
     วางไว้ใต้ตารางเพื่อให้ผู้ดูแลตรวจได้ทันทีว่าที่ตั้งไว้ตรงกับสิ่งที่ปรากฏในแบบประเมินหรือไม่ */
@@ -1983,26 +2005,16 @@ function fwYearImpact(y){
       ${stat("ระดับเป้าหมายเฉลี่ย",tAvg===null?"—":fmt(tAvg,1),`จาก ${FW.levels.length} ระดับ`)}
       ${stat("ผู้เกี่ยวข้อง",`${stu.length} นักศึกษา`,`ผู้ประเมิน ${raters.length} คน · สูตร ${SCORE_RULE.replace("คะแนนรวม = ","")}`)}
     </div>
-    ${(()=>{const nL=FW.competencies.filter(c=>cfgOf(FW,y,c.id).locked).length;
-      return (yearLocked(FW,y)||nL)?`<div class="alert alert-warn" style="margin-top:.8rem">🔒 ${
-        yearLocked(FW,y)?"ชั้นปีนี้ถูกล็อกไว้ทั้งชั้นปี การตั้งค่าคงที่ ผู้ประเมินจะเห็นชุดสมรรถนะเดิมตลอดรอบการประเมิน"
-          :`ล็อกไว้ ${nL} สมรรถนะ ชุดที่ล็อกจะไม่เปลี่ยนระหว่างรอบการประเมิน`}</div>`:"";})()}
     ${warn.length?`<div class="alert alert-err" style="margin-top:.8rem">${warn.map(esc).join("<br>")}</div>`
       :`<div class="alert alert-ok" style="margin-top:.8rem">การตั้งค่าสอดคล้องกันแล้ว สมรรถนะที่เปิดไว้ทุกรายการมีตัวชี้วัดพร้อมใช้ประเมิน</div>`}`);
 }
 function fwIndTab(y,ro,rubric){
   const yc=yearOf(FW,y), c=FW.competencies.find(x=>x.id===S.fwSel)||FW.competencies[0];
   const cfg=cfgOf(FW,y,c.id);
-  /* ตัวชี้วัดและเกณฑ์เป็นส่วนหนึ่งของค่ากำหนดรายชั้นปี จึงถูกล็อกไปพร้อมกัน */
-  const lk=compLocked(FW,y,c.id);
-  ro=ro||lk;
-  const lockNote=lk?`<div class="alert alert-warn" style="margin:0 0 .8rem">🔒 ${
-    yearLocked(FW,y)?`${esc(yc.label)}ถูกล็อกไว้ทั้งชั้นปี`:"สมรรถนะนี้ถูกล็อกไว้"}
-    ตัวชี้วัดและเกณฑ์การประเมินจึงแก้ไขไม่ได้ ปลดล็อกได้ที่แท็บภาพรวมชั้นปี</div>`:"";
   const picks=FW.competencies.map(cc=>{
     const v=cfgOf(FW,y,cc.id);
     return `<button class="${S.fwSel===cc.id?"on ":""}${v.active?"":"off"}" data-act="fwpick" data-v="${cc.id}">${esc(cc.th)}
-      <small>${cc.code} · ${v.indicators.length} ตัวชี้วัด · เป้าหมายระดับ ${v.target}${v.active?"":" · ปิดใช้"}${v.locked?" · 🔒 ล็อก":""}</small></button>`;}).join("");
+      <small>${cc.code} · ${v.indicators.length} ตัวชี้วัด · เป้าหมายระดับ ${v.target}${v.active?"":" · ปิดใช้"}</small></button>`;}).join("");
   let right;
   if(!rubric){
     const rows=cfg.indicators.length?cfg.indicators.map((i,n)=>`<div class="editrow">
@@ -2011,7 +2023,7 @@ function fwIndTab(y,ro,rubric){
       ${ro?"":`<button class="btn btn-danger btn-sm" data-act="fwinddel" data-v="${i.id}">ลบ</button>`}</div>`).join("")
       :`<div class="empty">ยังไม่มีตัวชี้วัดในชั้นปีนี้</div>`;
     right=card(`ตัวชี้วัด · ${esc(c.th)}`,`${yc.label} · ระยะ${yc.stage}`,
-      `${lockNote}${cfg.active?"":`<div class="alert alert-info" style="margin-top:0;margin-bottom:.8rem">สมรรถนะนี้ปิดใช้งานใน${yc.label} จะไม่ปรากฏในแบบประเมินและรายงานของชั้นปีนี้</div>`}${rows}`,
+      `${cfg.active?"":`<div class="alert alert-info" style="margin-top:0;margin-bottom:.8rem">สมรรถนะนี้ปิดใช้งานใน${yc.label} จะไม่ปรากฏในแบบประเมินและรายงานของชั้นปีนี้</div>`}${rows}`,
       ro?"":`<div class="row"><button class="btn btn-ghost btn-sm" data-act="fwgencomp">สร้างจากแม่แบบชั้นปี</button>
         <button class="btn btn-ghost btn-sm" data-act="fwindadd">เพิ่มตัวชี้วัด</button></div>`);
   }else{
@@ -2024,7 +2036,7 @@ function fwIndTab(y,ro,rubric){
       </tr></tbody></table></div></div>`).join("")
       :`<div class="empty">ยังไม่มีตัวชี้วัดในชั้นปีนี้</div>`;
     right=card(`เกณฑ์การประเมิน · ${esc(c.th)}`,`${yc.label} · เป้าหมายระดับ ${cfg.target}`,
-      `${lockNote}<div class="stack">${tbl}</div>`,
+      `<div class="stack">${tbl}</div>`,
       ro?"":`<button class="btn btn-ghost btn-sm" data-act="fwautodesc">สร้างร่างอัตโนมัติ</button>`);
   }
   return `<div class="grid g2" style="grid-template-columns:296px 1fr;align-items:start">
@@ -2250,6 +2262,12 @@ function progressPage(){
   const rounds=HIST[st.id]||[];
   const sel=S.role==="Student"?"":`<div class="field" style="margin-top:0"><label>นักศึกษา</label>
     <select class="inp" data-act="prgsid">${stu.map(x=>`<option value="${x.id}" ${x.id===S.prgSid?"selected":""}>${x.program} ปี ${x.year} · ${esc(x.code)} · ${esc(x.name)}</option>`).join("")}</select></div>`;
+
+  /* ชั้นปีที่ผู้ดูแลปิดสมรรถนะไว้ทั้งหมด จะไม่มีเป้าหมายให้เฉลี่ย รายงานจึงคำนวณไม่ได้
+     ต้องดักไว้ก่อน มิฉะนั้นค่าเฉลี่ยเป็น null แล้วพังตอนจัดรูปแบบตัวเลข */
+  if(!comps.length) return `<div class="stack">${card("ความก้าวหน้ารายบุคคล",esc(st.name),
+    `${sel}<div class="empty">${esc(yearOf(FW,y).label)}ยังไม่ได้เปิดใช้สมรรถนะใด
+      รายงานจะแสดงเมื่อผู้ดูแลระบบเปิดใช้สมรรถนะในเมนูกรอบสมรรถนะรายชั้นปี</div>`)}</div>`;
 
   if(!rounds.length) return `<div class="stack">${card("ความก้าวหน้ารายบุคคล",esc(st.name),
     `${sel}<div class="empty">ยังไม่มีผลการประเมินของผู้เรียนรายนี้ รายงานจะแสดงเมื่อมีการบันทึกผลอย่างน้อยหนึ่งรอบ</div>`)}</div>`;
@@ -3156,6 +3174,7 @@ function lecturerDash(){
     <td>${levelChip(r.v)}</td></tr>`).join("");
   const pg=scopeProgram();
   return `<div class="stack">${pfHead(myUser())}${scopeBanner()}${yearStrip(y,"setyear",`${cohort.length} คนในชั้นปีนี้`)}
+    ${frameworkScopeNote(y,comps)}
     <div class="grid g4">${stat("นักศึกษาในชั้นปี",cohort.length,pg?esc(progName(pg)):"ทุกสาขาวิชา")}
       ${stat("คะแนนเฉลี่ย",fmt(mean(rows.map(r=>r.v).filter(v=>v!==null))))}
       ${stat("ต้องเฝ้าระวังขึ้นไป",rows.filter(r=>r.risk>=.35).length,"จากแบบจำลองทำนาย EDM")}
@@ -3227,7 +3246,8 @@ function studentsPage(){
     ${card("นักศึกษาในชั้นปี","ตัวเลขหัวคอลัมน์คือลำดับสมรรถนะ ตัวเลขสีแดงคือต่ำกว่าระดับเป้าหมาย",
       cohort.length?`<div class="scroll-x"><table class="tight" style="min-width:${320+comps.length*38}px">
         <thead><tr><th style="min-width:190px">นักศึกษา</th>${comps.map((c,k)=>`<th class="num" title="${esc(c.th)}">${k+1}</th>`).join("")}<th class="num">เฉลี่ย</th></tr></thead>
-        <tbody>${rows}</tbody></table></div>`:`<div class="empty">ไม่มีนักศึกษาในชั้นปีนี้</div>`,"",false)}</div>`;
+        <tbody>${rows}</tbody></table></div>`:`<div class="empty">ไม่มีนักศึกษาในชั้นปีนี้</div>`,"",false)}
+    ${yearScopeTable()}</div>`;
 }
 function analyticsPage(){
   const y=S.year, cohort=visStudents().filter(s=>s.year===y), comps=activeComps(FW,y);
@@ -3445,6 +3465,38 @@ function assessedByMe(sid){
   });
   return out;
 }
+/** ชุดสมรรถนะที่เปิดใช้ของชั้นปีนี้ ตามที่ผู้ดูแลตั้งค่าไว้
+    ผู้ประเมินจึงรู้ว่าแบบประเมินที่เห็นมาจากการตั้งค่าใด และตรงกับที่ผู้ดูแลเห็นในหน้าตั้งค่า */
+function frameworkScopeNote(y,comps){
+  const yc=yearOf(FW,y), open=comps||activeComps(FW,y);
+  const inds=open.reduce((n,c)=>n+cfgOf(FW,y,c.id).indicators.length,0);
+  const off=FW.competencies.length-open.length;
+  return `<div class="alert alert-info" style="margin-top:0">
+    <b>กรอบสมรรถนะ${esc(yc.label)}</b> · เปิดใช้ ${open.length} จาก ${FW.competencies.length} สมรรถนะ
+    ${off?`(ปิดไว้ ${off})`:""} · ${inds} ตัวชี้วัดที่ต้องให้คะแนน
+    · ระดับเป้าหมายเฉลี่ย ${open.length?fmt(mean(open.map(c=>cfgOf(FW,y,c.id).target)),1):"—"}
+    <br>แบบประเมินแสดงเฉพาะสมรรถนะที่ผู้ดูแลระบบเปิดใช้ในชั้นปีนี้เท่านั้น</div>`;
+}
+/** สรุปการตั้งค่าทุกชั้นปีสำหรับฝั่งผู้ประเมิน ใช้ตัวเลขชุดเดียวกับหน้าตั้งค่าของผู้ดูแล */
+function yearScopeTable(){
+  const rows=FW.years.map(yy=>{
+    const y=yy.year, comps=activeComps(FW,y);
+    const inds=comps.reduce((n,c)=>n+cfgOf(FW,y,c.id).indicators.length,0);
+    const off=FW.competencies.length-comps.length;
+    return `<tr><td>${esc(yy.label)}<div class="sub">ระยะ${esc(yy.stage)}</div></td>
+      <td class="num" style="font-weight:600">${comps.length} / ${FW.competencies.length}</td>
+      <td class="num">${off||"—"}</td>
+      <td class="num">${inds}</td>
+      <td class="num">${comps.length?fmt(mean(comps.map(c=>cfgOf(FW,y,c.id).target)),1):"—"}</td>
+      <td>${comps.length?`<span class="tag tag-ok">พร้อมประเมิน</span>`:`<span class="tag tag-risk">ยังไม่เปิดสมรรถนะ</span>`}</td></tr>`;
+  }).join("");
+  return card("สมรรถนะที่เปิดใช้ในแต่ละชั้นปี",
+    "ตามการตั้งค่าของผู้ดูแลระบบ แบบประเมินของแต่ละชั้นปีจะแสดงเฉพาะสมรรถนะที่เปิดใช้",
+    `<table class="tight"><thead><tr><th>ชั้นปี</th><th class="num" style="width:110px">เปิดใช้</th>
+      <th class="num" style="width:80px">ปิด</th><th class="num" style="width:90px">ตัวชี้วัด</th>
+      <th class="num" style="width:110px">เป้าหมายเฉลี่ย</th><th style="width:130px">สถานะ</th>
+     </tr></thead><tbody>${rows}</tbody></table>`,"",false);
+}
 /** สรุปให้ผู้ประเมินเห็นว่าตนประเมินสมรรถนะใดไปแล้ว เหลืออีกกี่รายการ
     ผู้ประเมินจึงไม่ต้องเปิดทีละสมรรถนะเพื่อตรวจว่าทำครบหรือยัง */
 function assessedPanel(st,comps,mine){
@@ -3520,6 +3572,7 @@ function assessPage(){
             <div class="hint">✓ คือสมรรถนะที่ท่านประเมินนักศึกษารายนี้ไปแล้ว</div></div>
           <div class="field" style="margin-top:0"><label>ประเภทการประเมิน</label><select class="inp" data-act="astype">${typeOpts}</select></div>
         </div>
+        ${frameworkScopeNote(y,comps)}
         ${mine[c.id]?`<div class="alert alert-info" style="margin-bottom:0">ท่านเคยประเมินสมรรถนะนี้แล้วเมื่อ ${esc(mine[c.id].date||"—")}
           (ครั้งที่ ${mine[c.id].round} · ให้คะแนน ${mine[c.id].n} ตัวชี้วัด) การบันทึกใหม่จะเป็นการประเมินซ้ำในรอบปัจจุบัน</div>`:""}`)}
       ${assessedPanel(st,comps,mine)}
@@ -6953,43 +7006,43 @@ document.addEventListener("click",e=>{
     case "setpsyyear": S.psyYear=+v; S.msg=""; break;
     case "fwtab": S.fwTab=v; S.msg=""; break;
     case "fwpick": S.fwSel=v; if(S.fwTab==="year") S.fwTab="ind"; break;
-    /* ล็อกรายสมรรถนะ ปิดกั้นการแก้ไขทุกค่าในแถวนั้น
-       ส่งขึ้นฐานข้อมูลทันที (delay 0) เพราะเป็นการกระทำที่จบในครั้งเดียว ไม่ใช่การพิมพ์ต่อเนื่อง */
-    case "fwlock": {
-      if(yearLocked(FW,S.year)){ setMsg("ชั้นปีนี้ถูกล็อกทั้งชั้นปี ต้องปลดล็อกชั้นปีก่อน"); break; }
-      const cf=cfgEdit(S.year,v); cf.locked=!cf.locked;
-      saveYearCfg(S.year,0);
-      setMsg(cf.locked?`ล็อกสมรรถนะแล้ว ค่าทั้งหมดของสมรรถนะนี้ใน${yearOf(FW,S.year).label}จะแก้ไขไม่ได้จนกว่าจะปลดล็อก`
-                      :"ปลดล็อกสมรรถนะแล้ว กลับมาแก้ไขได้ตามปกติ"); break; }
-    /* ล็อกทั้งชั้นปี ครอบทุกสมรรถนะ ทุกตัวชี้วัด และชื่อชั้นปี */
-    case "fwylock": {
-      const yc=yearOf(FW,S.year); yc.locked=!yc.locked;
-      saveYearCfg(S.year,0);
-      setMsg(yc.locked?`ล็อก${yc.label}ทั้งชั้นปีแล้ว ทุกค่ารวมถึงตัวชี้วัดและเกณฑ์จะแก้ไขไม่ได้`
-                      :`ปลดล็อก${yc.label}แล้ว กลับมาแก้ไขได้ตามปกติ`); break; }
+    /* เปิดหรือปิดสมรรถนะรายชั้นปี กระทบแบบประเมินของผู้ประเมินทุกคนทันที
+       จึงบันทึกลงฐานข้อมูลทุกครั้ง และรายงานผลที่เกิดขึ้นให้ผู้ดูแลเห็น */
     case "fwactive": {
-      if(compLocked(FW,S.year,v)){ el.checked=!el.checked; setMsg(LOCK_MSG); break; }
-      cfgEdit(S.year,v).active=el.checked; saveYearCfg(S.year); break; }
-    case "fwinddel": { if(compLocked(FW,S.year,S.fwSel)){setMsg(LOCK_MSG);break;}
+      const cf=cfgEdit(S.year,v); cf.active=el.checked;
+      saveYearCfg(S.year);
+      const c=FW.competencies.find(x=>x.id===v)||{};
+      const n=activeComps(FW,S.year).length;
+      setMsg(`${cf.active?"เปิดใช้":"ปิด"} ${c.code||""} ${c.th||""} ใน${yearOf(FW,S.year).label}แล้ว · เปิดใช้ ${n} จาก ${FW.competencies.length} สมรรถนะ`);
+      break; }
+    /* เปิดหรือปิดพร้อมกันทั้งชั้นปี ใช้ตอนตั้งค่าชั้นปีใหม่ซึ่งต้องกดทีละ 17 ครั้ง */
+    case "fwallon": case "fwalloff": {
+      const on=(a==="fwallon");
+      FW.competencies.forEach(c=>{ cfgEdit(S.year,c.id).active=on; });
+      saveYearCfg(S.year,0);
+      setMsg(on?`เปิดใช้ครบทั้ง ${FW.competencies.length} สมรรถนะใน${yearOf(FW,S.year).label}แล้ว`
+               :`ปิดสมรรถนะทั้งหมดใน${yearOf(FW,S.year).label}แล้ว แบบประเมินของชั้นปีนี้จะว่างจนกว่าจะเปิดใหม่`);
+      break; }
+    case "fwinddel": {
       const cf=cfgEdit(S.year,S.fwSel); cf.indicators=cf.indicators.filter(i=>i.id!==v);
       if(/-/.test(String(v))) livePush("ind.delete",{ind_id:v},"ลบตัวชี้วัดออกจากฐานข้อมูลแล้ว"); break; }
-    case "fwindadd": { if(compLocked(FW,S.year,S.fwSel)){setMsg(LOCK_MSG);break;}
+    case "fwindadd": {
       const ci=FW.competencies.findIndex(x=>x.id===S.fwSel);
       const ni=makeIndicator("ตัวชี้วัดใหม่",FW.competencies.length,ci,FW.levels.length,Math.random);
       cfgEdit(S.year,S.fwSel).indicators.push(ni); saveInd(S.year,S.fwSel,ni); break; }
-    case "fwgencomp": { if(compLocked(FW,S.year,S.fwSel)){setMsg(LOCK_MSG);break;}
+    case "fwgencomp": {
       const ys=YEAR_STAGES.find(s=>s.year===S.year)||YEAR_STAGES[3];
       const c=FW.competencies.find(x=>x.id===S.fwSel), ci=FW.competencies.indexOf(c);
       cfgEdit(S.year,S.fwSel).indicators=ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),FW.competencies.length,ci,FW.levels.length,Math.random));
       saveIndSet(S.year,S.fwSel);
       setMsg("สร้างร่างตัวชี้วัดจากแม่แบบระยะพัฒนาการของชั้นปีแล้ว กรุณาตรวจสอบและปรับถ้อยคำให้ตรงกับหลักสูตรก่อนใช้จริง"); break; }
-    case "fwgenyear": { if(yearLocked(FW,S.year)){setMsg(LOCK_MSG);break;}
+    case "fwgenyear": {
       const ys=YEAR_STAGES.find(s=>s.year===S.year)||YEAR_STAGES[3];
-      FW.competencies.forEach((c,ci)=>{ const cf=cfgEdit(S.year,c.id); if(!cf.active||cf.locked) return;
+      FW.competencies.forEach((c,ci)=>{ const cf=cfgEdit(S.year,c.id); if(!cf.active) return;
         cf.indicators=ys.tpl.map(t=>makeIndicator(t.replace(/%C%/g,c.th),FW.competencies.length,ci,FW.levels.length,Math.random));
         saveIndSet(S.year,c.id); });
       setMsg(`สร้างร่างตัวชี้วัดของ${yearOf(FW,S.year).label}ทุกสมรรถนะที่เปิดใช้แล้ว ต้องตรวจสอบก่อนนำไปใช้ประเมินจริง`); break; }
-    case "fwautodesc": { if(compLocked(FW,S.year,S.fwSel)){setMsg(LOCK_MSG);break;}
+    case "fwautodesc": {
       const cf=cfgEdit(S.year,S.fwSel);
       cf.indicators.forEach(i=>{ i.descriptors=FW.levels.map((l,k)=>DEFAULT_DESC[k]||("กำหนดคำอธิบายระดับ "+l.th)); });
       saveIndSet(S.year,S.fwSel);
@@ -7268,32 +7321,24 @@ document.addEventListener("change",e=>{
       rd.onerror=()=>{ S.evErr="อ่านไฟล์ไม่สำเร็จ"; render(); };
       rd.readAsDataURL(f);
       re=false; break; }
-    case "fwtarget": if(compLocked(FW,S.year,v)){setMsg(LOCK_MSG);break;}
+    case "fwtarget":
       cfgEdit(S.year,v).target=+val2; saveYearCfg(S.year); break;
     case "fwtest": { cfgEdit(S.year,v).test.open=true; saveYearCfg(S.year); break; }
-    case "fwactive": if(compLocked(FW,S.year,v)){setMsg(LOCK_MSG);break;}
+    case "fwactive":
       cfgEdit(S.year,v).active=el.checked; saveYearCfg(S.year); break;
     case "fwmcsel": { const c=FW.competencies.find(x=>x.id===v); if(c){ c.ptru=val2; saveComp(c); } break; }
     case "fwcopy": { if(!val2) {re=false;break;}
-      if(yearLocked(FW,S.year)){setMsg(LOCK_MSG);break;}
       const src=yearOf(FW,+val2), dst=yearOf(FW,S.year);
-      /* เดิมคัดลอกไม่ครบ ตกทั้ง test (จำนวนข้อและเวลาสอบ) จนค่าที่ตั้งไว้หายไปเป็นค่าตั้งต้น
-         สมรรถนะที่ล็อกไว้ในชั้นปีปลายทางต้องไม่ถูกเขียนทับ และต้องคงสถานะล็อกไว้ */
-      let kept=0;
-      dst.config=Object.fromEntries(Object.entries(src.config).map(([cid2,cf])=>{
-        const old=dst.config[cid2];
-        if(old&&old.locked){ kept++; return [cid2,old]; }
-        return [cid2,{
-          active:cf.active,target:cf.target,locked:false,
-          test:{open:(cf.test&&cf.test.open)!==false,
-                n:(cf.test&&cf.test.n)||ITEMS_PER_COMP_DEF,
-                min:(cf.test&&cf.test.min)||EXAM_MIN_DEF},
-          indicators:cf.indicators.map(i=>({id:nid("I"),th:i.th,descriptors:[...i.descriptors],
-            irt:{a:i.irt.a,b:[...i.irt.b]},cdm:{...i.cdm},q:[...i.q]}))}];
-      }));
+      /* เดิมคัดลอกไม่ครบ ตกทั้ง test (จำนวนข้อและเวลาสอบ) จนค่าที่ตั้งไว้หายไปเป็นค่าตั้งต้น */
+      dst.config=Object.fromEntries(Object.entries(src.config).map(([cid2,cf])=>[cid2,{
+        active:cf.active,target:cf.target,
+        test:{open:(cf.test&&cf.test.open)!==false,
+              n:(cf.test&&cf.test.n)||ITEMS_PER_COMP_DEF,
+              min:(cf.test&&cf.test.min)||EXAM_MIN_DEF},
+        indicators:cf.indicators.map(i=>({id:nid("I"),th:i.th,descriptors:[...i.descriptors],
+          irt:{a:i.irt.a,b:[...i.irt.b]},cdm:{...i.cdm},q:[...i.q]}))}]));
       saveYearCfg(S.year,0);
-      setMsg(`คัดลอกการตั้งค่าจากชั้นปีที่ ${val2} มายัง${dst.label}แล้ว ตัวชี้วัดถูกสร้างเป็นรายการใหม่ ไม่ผูกกับผลประเมินของชั้นปีต้นทาง`+
-        (kept?` · ข้ามสมรรถนะที่ล็อกไว้ ${kept} รายการ`:"")); break; }
+      setMsg(`คัดลอกการตั้งค่าจากชั้นปีที่ ${val2} มายัง${dst.label}แล้ว · เปิดใช้ ${activeComps(FW,S.year).length} สมรรถนะ ตัวชี้วัดถูกสร้างเป็นรายการใหม่ ไม่ผูกกับผลประเมินของชั้นปีต้นทาง`); break; }
     default: re=false;
   }
   if(re) render();
@@ -7334,13 +7379,13 @@ document.addEventListener("input",e=>{
     case "usrq": S.usrFilter.q=val2; clearTimeout(window.__q); window.__q=setTimeout(render,300); break;
     case "evtitle": S.evNew.title=val2; break;
     case "evlink": S.evNew.link=val2.trim(); break;
-    case "fwylabel": if(yearLocked(FW,S.year)) break;
+    case "fwylabel":
       yearOf(FW,S.year).label=val2; saveYearCfg(S.year); break;
-    case "fwystage": if(yearLocked(FW,S.year)) break;
+    case "fwystage":
       yearOf(FW,S.year).stage=val2; saveYearCfg(S.year); break;
-    case "fwindtext": { if(compLocked(FW,S.year,S.fwSel)) break;
+    case "fwindtext": {
       const i=findInd(S.fwSel,v,S.year); if(i){ i.th=val2; saveInd(S.year,S.fwSel,i); } break; }
-    case "fwdesc": { if(compLocked(FW,S.year,S.fwSel)) break;
+    case "fwdesc": {
       const i=findInd(S.fwSel,v,S.year); if(i){ i.descriptors[+k]=val2; saveInd(S.year,S.fwSel,i); } break; }
     case "fwmc": { const c=FW.competencies.find(x=>x.id===v); if(c){ c[k]=val2; saveComp(c); } break; }
     case "fwlv": { const l=FW.levels.find(x=>x.id===v); if(l) l[k]=val2; break; }
@@ -7348,9 +7393,9 @@ document.addEventListener("input",e=>{
     case "psyb": { const i=findInd(cid,v,S.psyYear); if(i) i.irt.b[+k]=+val2; break; }
     case "psyg": { const i=findInd(cid,v,S.psyYear); if(i) i.cdm.g=+val2; break; }
     case "psys": { const i=findInd(cid,v,S.psyYear); if(i) i.cdm.s=+val2; break; }
-    case "fwtestn": { if(compLocked(FW,S.year,v)) break;
+    case "fwtestn": {
       cfgEdit(S.year,v).test.n=clamp(+val2||ITEMS_PER_COMP_DEF,5,30); saveYearCfg(S.year); break; }
-    case "fwtestm": { if(compLocked(FW,S.year,v)) break;
+    case "fwtestm": {
       cfgEdit(S.year,v).test.min=clamp(+val2||EXAM_MIN_DEF,10,180); saveYearCfg(S.year); break; }
   }
 });
@@ -7597,7 +7642,7 @@ function applyFramework(d) {
       config[c.id] = {
         active: cf ? cf.is_active !== false : list.length > 0,
         target: cf ? numOr(cf.target_level, ys.target) : ys.target,
-        locked: cf ? !!cf.is_locked : false,
+
         test: {open: cf ? !!cf.exam_open : false,
                n: cf ? (numOr(cf.exam_items, ITEMS_PER_COMP_DEF) || ITEMS_PER_COMP_DEF) : ITEMS_PER_COMP_DEF,
                min: cf ? (numOr(cf.exam_minutes, EXAM_MIN_DEF) || EXAM_MIN_DEF) : EXAM_MIN_DEF},
@@ -7620,7 +7665,7 @@ function applyFramework(d) {
       };
     });
     return {year: y, label: m.label || ys.label, stage: m.stage || ys.stage,
-            locked: !!m.locked, config};
+            config};
   });
 
   /* เก็บเวอร์ชันกรอบสมรรถนะจากเซิร์ฟเวอร์ไว้กำกับเอกสารทุกฉบับ */
@@ -8558,7 +8603,9 @@ document.addEventListener('click', e => {
    เดิมหน้าตั้งค่ากรอบสมรรถนะแก้ได้แต่ในหน่วยความจำของเบราว์เซอร์เท่านั้น
    พอรีเฟรชหน้าหรือผู้ประเมินคนอื่นเปิดดู ค่าก็กลับไปเป็นของเดิม
    จึงดูเหมือนตั้งค่าไม่ได้จริง ทั้งที่ฝั่งเซิร์ฟเวอร์มีเส้นทางบันทึกครบอยู่แล้วแต่ไม่เคยถูกเรียก */
-let LIVE_CFGTIMER = null, LIVE_INDTIMER = {}, LIVE_COMPTIMER = {};
+/* จับเวลาแยกรายชั้นปี เดิมใช้ตัวจับเวลาเดียวร่วมกัน การแก้ค่าของหลายชั้นปีติดกัน
+   จะทำให้คำขอของชั้นปีก่อนหน้าถูกยกเลิกไปก่อนได้ยิง */
+let LIVE_CFGTIMER = {}, LIVE_INDTIMER = {}, LIVE_COMPTIMER = {};
 
 /** บันทึกการตั้งค่าทั้งชั้นปีลงฐานข้อมูล ส่งทุกสมรรถนะไปพร้อมกันในคำขอเดียว
     เพราะผู้ดูแลมักแก้หลายช่องติดกัน การหน่วงเวลาไว้จึงยิงคำขอครั้งเดียวหลังพิมพ์จบ
@@ -8566,25 +8613,21 @@ let LIVE_CFGTIMER = null, LIVE_INDTIMER = {}, LIVE_COMPTIMER = {};
 function saveYearCfg(year, delay) {
   if (!liveOn()) return;
   const y = year || S.year;
-  clearTimeout(LIVE_CFGTIMER);
-  LIVE_CFGTIMER = setTimeout(() => {
+  clearTimeout(LIVE_CFGTIMER[y]);
+  LIVE_CFGTIMER[y] = setTimeout(() => {
     const yc = yearOf(FW, y);
     const items = FW.competencies.map(c => {
       const cf = cfgEdit(y, c.id);
       return {year: y, comp_id: c.id, is_active: !!cf.active, target_level: cf.target,
-              is_locked: !!cf.locked,
               exam_open: !!(cf.test && cf.test.open),
               exam_items: (cf.test && cf.test.n) || ITEMS_PER_COMP_DEF,
               exam_minutes: (cf.test && cf.test.min) || EXAM_MIN_DEF};
     });
-    const nLock = items.filter(i => i.is_locked).length;
+    const on = items.filter(i => i.is_active).length;
     livePush('yearcfg.save',
       {items: items,
-       year_meta: {year: y, label: yc.label, stage: yc.stage, locked: !!yc.locked}},
-      `บันทึกการตั้งค่า${yc.label}ลงฐานข้อมูลแล้ว · เปิดใช้ ${items.filter(i => i.is_active).length} สมรรถนะ` +
-      (nLock ? ` · ล็อกไว้ ${nLock} รายการ` : ''),
-      /* เซิร์ฟเวอร์เป็นผู้ตัดสินว่าเขียนจริงได้กี่รายการ หากถูกล็อกจะแจ้งกลับมา */
-      r => { if (r && (r.year_locked || r.blocked)) LIVE.info = r.message || 'มีรายการที่ถูกล็อกไว้ ระบบจึงไม่บันทึกทับ'; });
+       year_meta: {year: y, label: yc.label, stage: yc.stage}},
+      `บันทึกการตั้งค่า${yc.label}ลงฐานข้อมูลแล้ว · เปิดใช้ ${on} จาก ${items.length} สมรรถนะ`);
   }, delay === undefined ? 800 : delay);
 }
 
