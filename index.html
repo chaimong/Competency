@@ -3238,6 +3238,91 @@ function raterBar(parts,target,max){
       border-radius:4px;opacity:.35"></i>${tgt}${dots}</div>`;
 }
 
+/** ที่มาของคะแนนช่องทางหนึ่ง อ่านจาก RESP_* ที่ applyAssessments เติมจากชีต Assessments
+    และจากระเบียน ASSESS_LOG ซึ่งเก็บผู้ประเมิน วันที่ และรอบการประเมินจริง
+    ไม่มีการสังเคราะห์ตัวเลขขึ้นเอง ฝ่ายที่ยังไม่ได้ประเมินจะคืน avg เป็น null */
+function raterSource(sid,y,comps,key){
+  const r=raterByKey(key);
+  const vals=comps.map(c=>compScoreBy(FW,sid,c,y,key)).filter(v=>v!==null);
+  const log=(ASSESS_LOG[sid]||[]).filter(a=>a.type===r.type);
+  const who=[...new Set(log.map(a=>a.assessor_id).filter(Boolean))]
+    .map(id=>{ const u=userById(id); return u?u.name:id; });
+  const dates=log.map(a=>a.date).filter(Boolean).sort();
+  const rounds=[...new Set(log.map(a=>a.round_no))].sort((a,b)=>a-b);
+  return {r, avg:vals.length?mean(vals):null, nComp:vals.length,
+          nAssess:log.length, nItems:log.reduce((s,a)=>s+(a.n_items||0),0),
+          who, last:dates[dates.length-1]||"", rounds};
+}
+/** แสดงให้เห็นว่าคะแนนที่ใช้รายงานประกอบขึ้นจากค่าเฉลี่ยจริงของฝ่ายใดบ้าง
+    ผู้เรียนจึงตรวจย้อนได้ว่าตัวเลขสรุปมาจากผลการประเมินจริงของแต่ละฝ่าย ไม่ใช่ค่าที่ระบบคิดเอง */
+function scoreRollup(groupOverall,overallBy,ov,nGroups,src){
+  const rows=SCORE_GROUPS.map(g=>{
+    const v=groupOverall[g.key];
+    const parts=g.raters.map(k=>{
+      const s=src[k];
+      return s.avg===null?null:`${s.r.short} ${fmt(s.avg)}`;
+    }).filter(Boolean);
+    const how=g.raters.length>1
+      ? (parts.length>1?`เฉลี่ยของ ${parts.join(" และ ")}`
+        :(parts.length?`มีข้อมูลฝ่ายเดียว คือ ${parts[0]}`:"ยังไม่มีฝ่ายใดประเมิน"))
+      : (parts.length?`จากช่องทาง${g.label}`:"ยังไม่มีการประเมิน");
+    return `<tr><td>${esc(g.label)}</td>
+      <td class="num" style="font-weight:600">${fmt(v)}</td>
+      <td style="font-size:.82rem;color:var(--text-soft)">${esc(how)}</td></tr>`;
+  }).join("");
+  const used=SCORE_GROUPS.filter(g=>groupOverall[g.key]!==null)
+    .map(g=>fmt(groupOverall[g.key]));
+  const formula=used.length
+    ? `(${used.join(" + ")}) ÷ ${used.length} = <b>${fmt(ov)}</b>`
+    : "ยังไม่มีฝ่ายใดบันทึกผลการประเมิน";
+  return card("การรวมคะแนนเป็นคะแนนที่ใช้รายงาน",
+    "ตรวจย้อนได้ว่าคะแนนสรุปมาจากค่าเฉลี่ยจริงของฝ่ายใดบ้าง",
+    `<table class="tight"><thead><tr><th>ฝ่าย</th><th class="num" style="width:110px">คะแนนเฉลี่ยจริง</th>
+      <th>ที่มาของค่าเฉลี่ย</th></tr></thead><tbody>${rows}</tbody></table>
+     <div class="notebox" style="margin-top:.8rem">คะแนนที่ใช้รายงาน = ${formula}
+       ${nGroups&&nGroups<SCORE_GROUPS.length?`<br>ขณะนี้มีข้อมูล ${nGroups} จาก ${SCORE_GROUPS.length} ฝ่าย ระบบเฉลี่ยเฉพาะฝ่ายที่ประเมินแล้ว จึงไม่ลงโทษผู้เรียนที่ยังได้รับการประเมินไม่ครบ`:""}</div>`,
+    "",false);
+}
+/** พิสูจน์ที่มาของตัวเลขทุกฝ่าย พร้อมสถานะการเชื่อมต่อฐานข้อมูลและปุ่มดึงข้อมูลใหม่ */
+function raterSourcePanel(me,y,comps,src){
+  const live=(typeof liveOn==="function")&&liveOn();
+  const synced=live&&LIVE.deep.has(me.id);
+  const rows=RATERS.map(r=>{
+    const s=src[r.key];
+    return `<tr>
+      <td><span style="display:inline-block;width:.55rem;height:.55rem;border-radius:50%;
+        background:${r.color};margin-right:.4rem"></span>${esc(r.label)}</td>
+      <td class="num" style="font-weight:600">${fmt(s.avg)}</td>
+      <td class="num">${s.nComp} / ${comps.length}</td>
+      <td class="num">${s.nAssess||"—"}</td>
+      <td class="num">${s.nItems||"—"}</td>
+      <td style="font-size:.8rem">${s.who.length?esc(s.who.join(" · ")):`<span class="sub">ไม่ระบุ</span>`}</td>
+      <td style="font-size:.8rem">${s.last?esc(s.last):`<span class="sub">—</span>`}</td>
+      <td>${s.avg===null?`<span class="tag tag-n">ยังไม่ประเมิน</span>`
+        :`<span class="tag tag-ok">มีผลจริง</span>`}</td></tr>`;
+  }).join("");
+  const totAssess=RATERS.reduce((n,r)=>n+src[r.key].nAssess,0);
+  const status=!live
+    ? `<span class="tag tag-warn">ยังไม่ได้เชื่อมต่อฐานข้อมูล</span> ตัวเลขที่แสดงมาจากข้อมูลสาธิตในไฟล์นี้`
+    : (synced
+      ? `<span class="tag tag-ok">เชื่อมต่อฐานข้อมูลแล้ว</span> ดึงระเบียนการประเมินของท่านลงมาแล้ว ${totAssess} รายการ`
+      : `<span class="tag tag-warn">ยังไม่ได้ดึงข้อมูลรายบุคคล</span> กดปุ่มดึงข้อมูลใหม่เพื่อซิงก์จากฐานข้อมูล`);
+  return card("ที่มาของคะแนนแต่ละฝ่าย",
+    "ตรวจสอบได้ว่าค่าเฉลี่ยแต่ละฝ่ายมาจากผลการประเมินจริงของใคร กี่ครั้ง และเมื่อใด",
+    `<div style="margin-bottom:.8rem;font-size:.85rem">${status}</div>
+     <div class="scroll-x"><table class="tight" style="min-width:880px"><thead><tr>
+      <th>ฝ่ายผู้ประเมิน</th><th class="num" style="width:96px">เฉลี่ยจริง</th>
+      <th class="num" style="width:96px">สมรรถนะ</th><th class="num" style="width:80px">ครั้ง</th>
+      <th class="num" style="width:96px">ตัวชี้วัด</th><th>ผู้ประเมิน</th>
+      <th style="width:110px">ล่าสุด</th><th style="width:110px">สถานะ</th>
+     </tr></thead><tbody>${rows}</tbody></table></div>
+     <div class="notebox" style="margin-top:.8rem">
+       ค่าเฉลี่ยของทุกฝ่ายคำนวณจากคะแนนรายตัวชี้วัดที่บันทึกไว้ในชีต Assessments และ AssessmentScores โดยตรง
+       ช่องผู้ประเมินและวันที่อ่านจากระเบียนเดียวกัน จึงตรวจสอบย้อนกลับได้ทุกตัวเลข</div>`,
+    live?`<button class="btn btn-ghost btn-sm" data-act="mysync">ดึงข้อมูลจากฐานข้อมูลใหม่</button>`:"",
+    false);
+}
+
 function ladderPage(){
   const me=userById(S.user.linkTo||S.user.id)||students()[0];
   const y=me.year;
@@ -3279,21 +3364,25 @@ function ladderPage(){
     `<span style="display:inline-flex;align-items:center;gap:.3rem"><i style="width:0;height:.7rem;border-left:2px dashed var(--text-soft);display:inline-block"></i>
       <span style="font-size:.8rem">ระดับเป้าหมายของชั้นปี</span></span>`;
 
-  const groupStats=SCORE_GROUPS.map(g=>{
-    const sub=g.raters.map(k=>{
-      const r=raterByKey(k), x=overallBy[k];
-      return x===null?null:`${r.short} ${fmt(x)}`;
-    }).filter(Boolean).join(" · ");
-    return stat(g.label,fmt(groupOverall[g.key]),sub||"ยังไม่มีการประเมิน");
+  /* การ์ดรายฝ่ายทั้งสี่ช่องทาง แยกวิชาชีพครูกับวิชาเอกออกจากกัน
+     เดิมรวมสองช่องทางไว้ในการ์ดเดียว ผู้เรียนจึงไม่เห็นค่าเฉลี่ยจริงของแต่ละฝ่าย */
+  const src={};
+  RATERS.forEach(r=>{ src[r.key]=raterSource(me.id,y,comps,r.key); });
+  const raterStats=RATERS.map(r=>{
+    const s=src[r.key];
+    const sub=s.avg===null?"ยังไม่มีการประเมิน"
+      :`${s.nComp} จาก ${comps.length} สมรรถนะ · ประเมิน ${s.nAssess} ครั้ง`;
+    return stat(r.label,fmt(s.avg),sub);
   }).join("");
 
   return `<div class="stack">
     <div class="notebox">คะแนนที่แสดงคำนวณจาก <b>${SCORE_RULE}</b><br>${SCORE_RULE_NOTE}<br>
       ผลนี้เป็นของ${yearOf(FW,y).label} เกณฑ์เป้าหมายกำหนดแยกตามชั้นปี จึงเทียบคะแนนข้ามชั้นปีโดยตรงไม่ได้</div>
-    <div class="grid g4">
-      ${groupStats}
-      ${stat("คะแนนที่ใช้รายงาน",fmt(ov),nGroups?`เฉลี่ยจาก ${nGroups} ฝ่ายที่มีข้อมูล`:"ยังไม่มีการประเมิน")}
-    </div>
+    ${card("ค่าเฉลี่ยผลการประเมินจริงรายฝ่าย",
+      `เฉลี่ยจากคะแนนที่ผู้ประเมินแต่ละฝ่ายบันทึกไว้จริง เฉพาะสมรรถนะที่ฝ่ายนั้นประเมินแล้ว`,
+      `<div class="grid g4">${raterStats}</div>`)}
+    ${scoreRollup(groupOverall,overallBy,ov,nGroups,src)}
+    ${raterSourcePanel(me,y,comps,src)}
     ${card("พัฒนาการรายสมรรถนะ","เปรียบเทียบคะแนนของผู้ประเมินแต่ละฝ่ายกับค่าเฉลี่ยและระดับเป้าหมายของชั้นปี",
       `<div class="card-b" style="border-bottom:1px solid var(--line-soft);padding-top:0">${legend}</div>
        <div class="scroll-x"><table class="tight" style="min-width:980px"><thead><tr>
@@ -7693,14 +7782,39 @@ async function liveEvidence(sid, force) {
 
 /** ดึงผลรายตัวชี้วัดของนักศึกษาหนึ่งคน พร้อมแฟ้มสะสมงานเมื่อระบุ */
 async function liveStudent(sid, withEvidence) {
-  if (!liveOn() || !sid) return;
+  if (!liveOn() || !sid) return 0;
   liveBusy(1);
   try {
     const d = await API.call('assess.byStudent', {student_id: sid});
-    applyAssessments(sid, d);
+    const n = applyAssessments(sid, d);       // จำนวนรอบการประเมินที่ดึงลงมาได้
     if (withEvidence) await liveEvidence(sid, true);
-  } catch (e) { liveErr(e); }
+    return n;
+  } catch (e) { liveErr(e); return 0; }
   finally { liveBusy(-1); }
+}
+
+/** ดึงผลการประเมินของผู้เรียนที่กำลังใช้งานอยู่ใหม่จากฐานข้อมูล
+    ใช้บนหน้าพัฒนาการของฉัน เพื่อให้ผู้เรียนยืนยันได้เองว่าตัวเลขมาจากฐานข้อมูลจริง
+    ดึงผลสอบมาด้วย เพราะรายงานหน้านี้อ้างถึงทั้งสองแหล่ง */
+async function mySync() {
+  if (!liveOn()) return;
+  const me = userById(S.user.linkTo || S.user.id) || S.user;
+  if (!me) return;
+  toast('⏳ กำลังดึงผลการประเมินจากฐานข้อมูล…', 'wait', true);
+  liveBusy(1);
+  try {
+    await liveStudent(me.id, true);
+    try { await liveExamResults(me.id); } catch (x) {}
+    const rec = (ASSESS_LOG[me.id] || []).length;
+    LIVE.err = '';
+    LIVE.info = rec
+      ? `ดึงข้อมูลจากฐานข้อมูลแล้ว พบระเบียนการประเมินจริง ${rec} รายการ`
+      : 'เชื่อมต่อฐานข้อมูลได้ แต่ยังไม่มีผู้ประเมินบันทึกผลของท่าน';
+    toastSaved(LIVE.info);
+  } catch (e) {
+    liveErr(e);
+    toastFailed((e && e.message) || '');
+  } finally { liveBusy(-1); render(); }
 }
 
 /** ซิงก์ผลรายตัวชี้วัดของนักศึกษาทุกคนที่ผู้ใช้มีสิทธิ์เห็น */
@@ -8059,6 +8173,8 @@ document.addEventListener('click', e => {
   const a = el.dataset.act, v = el.dataset.v;
 
   if (a === 'livesync') { e.stopPropagation(); e.preventDefault(); liveSyncAll(true); return; }
+  /* ผู้เรียนดึงเฉพาะข้อมูลของตนเอง ไม่ใช้ liveSyncAll ซึ่งจะไล่ดึงนักศึกษาทุกคนโดยไม่จำเป็น */
+  if (a === 'mysync') { e.stopPropagation(); e.preventDefault(); mySync(); return; }
   if (a === 'livecheck') { e.stopPropagation(); e.preventDefault(); liveConnect(true); return; }
   if (a === 'livesetup') { e.stopPropagation(); e.preventDefault(); liveSetup(); return; }
   if (a === 'liveseed')  { e.stopPropagation(); e.preventDefault(); liveSeed(); return; }
