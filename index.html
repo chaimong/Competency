@@ -268,15 +268,32 @@ svg.chart{display:block;width:100%;height:auto}
 .tbtn i{width:9px;height:15px;display:block}
 .tbtn:hover{border-color:var(--text-soft)}
 .tbtn.on{border-color:var(--text);box-shadow:0 0 0 1px var(--text) inset}
-.ladderbar{display:grid;grid-template-columns:repeat(5,1fr);gap:.45rem}
-.lstep{border:1px solid var(--line);border-radius:4px;padding:.6rem .65rem;opacity:.5;background:var(--surface)}
-.lstep.on{opacity:1}
-.lstep.at{border-color:var(--text);box-shadow:0 0 0 1px var(--text) inset;opacity:1}
-.lstep .lnum{font-size:.72rem;color:var(--muted)}
-.lstep .lname{font-family:'Noto Serif Thai',serif;font-weight:600;font-size:.92rem;line-height:1.3}
-.lstep .len{font-size:.73rem;color:var(--muted)}
-.lstep .lfill{height:6px;border-radius:2px;margin-top:.5rem}
-.lstep .lyou{margin-top:.35rem;font-size:.72rem;color:var(--accent);font-weight:600}
+/* บันไดการเติบโตของสมรรถนะ PTRU Competency Staircase
+   เดิมเป็นแถบระดับห้าแถบสูงเท่ากัน ผู้เรียนจึงไม่เห็นว่าการพัฒนาคือการไต่ขึ้นทีละขั้น
+   ขั้นจึงสูงไล่ขึ้นตามระดับ  --h คือหมายเลขขั้นใช้คำนวณความสูง  --lc คือสีประจำระดับใช้เป็นพื้นขั้น */
+.stair{display:grid;grid-template-columns:repeat(5,1fr);gap:.45rem;align-items:end;padding-top:.3rem}
+.stair .stp{display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+.stair .mark{display:flex;flex-direction:column;align-items:center;gap:.2rem;margin-bottom:.35rem}
+.stair .chip2{font-size:.7rem;font-weight:600;border:1px solid;border-radius:999px;padding:.16rem .6rem;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stair .chip2.now{background:var(--text);border-color:var(--text);color:var(--surface)}
+.stair .chip2.tgt{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-fg)}
+.stair .caret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+  border-top:6px solid var(--text)}
+.stair .blk{display:flex;flex-direction:column;background:var(--surface);
+  border:1px solid var(--line);border-top:6px solid var(--lc);border-radius:5px 5px 3px 3px;
+  padding:.55rem .6rem .65rem;min-height:calc(7.6rem + (var(--h) - 1) * 1.8rem)}
+.stair .stp.future .blk{background:var(--surface-2);border-style:dashed;border-top-style:solid;opacity:.62}
+.stair .stp.at .blk{border-color:var(--text);box-shadow:0 0 0 1px var(--text) inset}
+.stair .no{width:1.5rem;height:1.5rem;border-radius:50%;flex:none;display:flex;align-items:center;
+  justify-content:center;font-size:.76rem;font-weight:700;background:var(--text);color:var(--surface);
+  margin-bottom:.3rem}
+.stair .stp.future .no{background:var(--line);color:var(--text-soft)}
+.stair .nm{font-family:'Noto Serif Thai',serif;font-weight:600;font-size:.88rem;line-height:1.3}
+.stair .en{font-size:.72rem;color:var(--muted)}
+.stair .vis{font-size:.75rem;color:var(--text-soft);line-height:1.45;margin-top:.3rem}
+.stairtb tr.atrow{background:var(--surface-2)}
+.stairtb tr.atrow td:first-child{box-shadow:2px 0 0 var(--text) inset}
 .stackbar{display:flex;height:18px;border-radius:2px;overflow:hidden;border:1px solid var(--line)}
 .stackbar div{font-size:.7rem;text-align:center;line-height:18px}
 .delta{font-variant-numeric:tabular-nums;font-size:.8rem}
@@ -339,7 +356,11 @@ svg.chart{display:block;width:100%;height:auto}
   .side nav{display:flex;gap:.25rem;padding:0}
   .side nav button{white-space:nowrap}
   .g2,.g3,.g4,.g5{grid-template-columns:1fr}
-  .ladderbar{grid-template-columns:1fr}
+  /* จอแคบวางบันไดเป็นแนวตั้ง เยื้องเข้าทีละขั้นเพื่อคงความรู้สึกของการไต่ขึ้น */
+  .stair{grid-template-columns:1fr;align-items:stretch}
+  .stair .stp{margin-left:calc((var(--h) - 1) * .8rem)}
+  .stair .blk{min-height:0}
+  .stair .mark{align-items:flex-start;margin-bottom:.25rem}
   .content,.topbar{padding-left:.9rem;padding-right:.9rem}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -477,6 +498,12 @@ const DEFAULT_LEVELS=[
   {id:"L1",th:"ผู้เริ่มต้น",en:"Novice"},{id:"L2",th:"ผู้เริ่มต้นขั้นสูง",en:"Advanced Beginner"},
   {id:"L3",th:"ผู้มีสมรรถนะ",en:"Competent"},{id:"L4",th:"ผู้ชำนาญ",en:"Proficient"},
   {id:"L5",th:"ผู้เชี่ยวชาญ",en:"Expert"}];
+
+/* ความสามารถที่มองเห็นได้ในแต่ละขั้นของบันไดสมรรถนะ
+   เก็บไว้ฝั่งหน้าจอ ไม่ผูกกับกรอบสมรรถนะที่ดึงจากฐานข้อมูล
+   จะได้อธิบายความหมายของการไต่ขั้นได้แม้กรอบเวอร์ชันเก่ายังไม่มีข้อความนี้ */
+const STAIR_VISIBLE=["รู้และเริ่มปฏิบัติ","ปฏิบัติได้เมื่อมีคำแนะนำ","ปฏิบัติได้ตามมาตรฐาน",
+  "ประยุกต์ใช้ได้อย่างคล่องแคล่ว","สร้างแนวทาง เป็นต้นแบบ และถ่ายทอดผู้อื่น"];
 
 const DEFAULT_DESC=[
   "ปฏิบัติได้เมื่อมีผู้ชี้แนะทุกขั้นตอน","ปฏิบัติได้ตามแบบอย่างที่กำหนด",
@@ -1351,13 +1378,47 @@ function groupBarSVG(labels,series,max,targets,tips){
     ${grid}${body}</svg><div class="legend">${lg}</div>`;
 }
 
-function ladderStrip(cur){
-  return `<div class="ladderbar">${FW.levels.map((l,k)=>{
-    const nn=k+1, reached=cur!==null&&nn<=cur, at=cur===nn;
-    return `<div class="lstep ${reached?"on":""} ${at?"at":""}">
-      <div class="lnum">ระดับที่ ${nn}</div><div class="lname">${esc(l.th)}</div><div class="len">${esc(l.en)}</div>
-      <div class="lfill" style="background:var(--l${nn})"></div>
-      ${at?`<div class="lyou">ระดับปัจจุบัน</div>`:""}</div>`;}).join("")}</div>`;
+/** ปัดคะแนนเป้าหมายให้เป็นหมายเลขขั้นของบันได */
+function stairStep(v){
+  return (v===null||v===undefined||Number.isNaN(v))?null:clamp(Math.round(v),1,FW.levels.length);
+}
+/** บันไดการเติบโตของสมรรถนะ PTRU Competency Staircase
+    cur   คะแนนเฉลี่ยจริงเป็นทศนิยม ใช้กำกับไว้บนขั้นปัจจุบัน
+    curLv ขั้นที่ผู้เรียนยืนอยู่หลังปัดเศษ
+    tgtLv คะแนนเป้าหมายของชั้นปี จะปัดเป็นขั้นให้ภายในฟังก์ชัน */
+function staircase(cur,curLv,tgtLv){
+  const tgt=stairStep(tgtLv);
+  return `<div class="stair">${FW.levels.map((l,k)=>{
+    const nn=k+1, at=curLv===nn, future=curLv===null||nn>curLv;
+    const chips=[];
+    if(at) chips.push(`<span class="chip2 now">ระดับปัจจุบัน ${fmt(cur)}</span>`);
+    if(tgt===nn) chips.push(`<span class="chip2 tgt">เป้าหมายชั้นปี</span>`);
+    return `<div class="stp ${at?"at":""} ${future?"future":""}" style="--h:${nn};--lc:var(--l${nn})">
+      ${chips.length?`<div class="mark">${chips.join("")}<span class="caret"></span></div>`:""}
+      <div class="blk">
+        <span class="no">${nn}</span>
+        <b class="nm">${esc(l.th)}</b>
+        <span class="en">${esc(l.en)}</span>
+        <span class="vis">${esc(STAIR_VISIBLE[k]||"")}</span>
+      </div></div>`;}).join("")}</div>`;
+}
+/** ตารางความหมายของการไต่ขั้น พร้อมกำกับว่าผู้เรียนยืนอยู่ขั้นใด */
+function stairMeaning(curLv,tgtLv){
+  const tgt=stairStep(tgtLv);
+  const rows=FW.levels.map((l,k)=>{
+    const nn=k+1;
+    let tag=`<span class="tag tag-n">ยังไม่ถึง</span>`;
+    if(curLv!==null&&nn<curLv)        tag=`<span class="tag tag-ok">ผ่านแล้ว</span>`;
+    else if(curLv===nn)               tag=`<span class="tag tag-ok">ระดับปัจจุบัน</span>`;
+    else if(curLv!==null&&nn===curLv+1) tag=`<span class="tag tag-warn">ขั้นถัดไป</span>`;
+    return `<tr class="${curLv===nn?"atrow":""}">
+      <td style="width:62px">🪜 ${nn}</td>
+      <td style="width:190px"><b>${esc(l.en)}</b><div class="sub">${esc(l.th)}</div></td>
+      <td>${esc(STAIR_VISIBLE[k]||"")}</td>
+      <td style="width:170px">${tag}${tgt===nn?` <span class="tag tag-warn">🎯 เป้าหมายชั้นปี</span>`:""}</td></tr>`;
+  }).join("");
+  return `<table class="tight stairtb"><thead><tr><th>ขั้น</th><th>ระดับ</th>
+    <th>ความสามารถที่มองเห็นได้</th><th>สถานะของผู้เรียน</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function stackBar(counts,total){
   if(!total) return `<div class="stackbar"></div>`;
@@ -2168,8 +2229,19 @@ function progressPage(){
         ${stat("คะแนนเฉลี่ยล่าสุด",fmt(cur),`เป้าหมายเฉลี่ยของชั้นปี ${fmt(targetAvg,1)}`)}
         ${stat("การเปลี่ยนแปลงจากรอบแรก",(gain>=0?"+":"")+fmt(gain),`<span class="tag ${trendTag}">${trend}</span>`)}</div>`)}
 
-    ${card("ตำแหน่งบนเส้นทางพัฒนาสมรรถนะ","ระดับคำนวณจากคะแนนเฉลี่ยของสมรรถนะที่เปิดใช้ในชั้นปีนี้",
-      ladderStrip(curLv)+`<p class="hint" style="margin-top:.8rem">
+    ${card("บันไดการเติบโตของสมรรถนะ · PTRU Competency Staircase",
+      "ตำแหน่งบนเส้นทางพัฒนาสมรรถนะ · ระดับคำนวณจากคะแนนเฉลี่ยของสมรรถนะที่เปิดใช้ในชั้นปีนี้",
+      `<p class="hint" style="margin:0 0 .5rem">ขณะนี้ยืนอยู่ที่
+         <b>ขั้นที่ ${curLv} · ${esc(FW.levels[curLv-1].th)} · ${esc(FW.levels[curLv-1].en)}</b>
+         คะแนนเฉลี่ย ${fmt(cur)} จาก ${FW.levels.length} ขั้น
+         · เป้าหมายของชั้นปีที่ ${y} คือขั้นที่ ${stairStep(targetAvg)}${
+           curLv<FW.levels.length
+             ? ` · อีก ${fmt(Math.max(0,curLv+.5-cur))} คะแนนจะไต่ขึ้นขั้นที่ ${curLv+1}`
+             : " · อยู่ขั้นสูงสุดของบันไดแล้ว"}</p>
+       ${staircase(cur,curLv,targetAvg)}
+       <h4 style="margin:1.4rem 0 .5rem;font-size:.92rem">ความหมายของการไต่ขั้น</h4>
+       ${stairMeaning(curLv,targetAvg)}
+       <p class="hint" style="margin-top:.8rem">
         ระดับที่แสดงเป็นภาพรวม ผู้เรียนอาจอยู่คนละระดับในแต่ละสมรรถนะ ดูรายละเอียดได้ในตารางด้านล่าง</p>`)}
 
     ${card("เปรียบเทียบสมรรถนะรายด้านด้วยแผนภาพเรดาร์",
@@ -8603,10 +8675,10 @@ const RS_PHOTO={
 const RESEARCH={
   fund:"กองทุนสนับสนุนงานวิจัย มหาวิทยาลัยราชภัฏเลย",
   fundYear:"ประจำปีงบประมาณ 2569",
-  titleTh:"การพัฒนานวัตกรรมการวัดและประเมินผลการเรียนรู้ฐานสมรรถนะด้วยดิจิทัลอัจฉริยะตามรูปแบบการผลิตครู PTRU MODEL สำหรับนักศึกษาวิชาชีพครู คณะครุศาสตร์ มหาวิทยาลัยราชภัฏเลย",
-  titleEn:"Development of an Intelligent Digital Competency-Based Learning Assessment Innovation Based on the PTRU Teacher Production Model",
-  innovation:"PTRU-DCAI Innovation Model (PTRU Digital Competency Assessment Intelligence Model)",
-  innovationSub:"“นวัตกรรม PTRU-DCAI ไม่ได้หยุดอยู่ที่การวัดและให้คะแนน แต่เปลี่ยนผลการประเมินให้เป็นข้อมูลอัจฉริยะที่สามารถวิเคราะห์และวินิจฉัยสมรรถนะของผู้เรียน แล้วใช้ AI ให้ Feedback และกำหนดแนวทางพัฒนารายบุคคล ก่อนประเมินซ้ำเพื่อดูความก้าวหน้า” “Measure → Diagnose → Develop → Grow” วัด → วินิจฉัย → พัฒนา → เติบโต",
+  titleTh:"การพัฒนานวัตกรรมการวัดและประเมินผลการเรียนรู้ฐานสมรรถนะด้วยดิจิทัลตามรูปแบบการผลิตครู PTRU MODEL สำหรับนักศึกษาวิชาชีพครู คณะครุศาสตร์ มหาวิทยาลัยราชภัฏเลย",
+  titleEn:"Development of a Digital Competency-Based Assessment Innovation Aligned with the PTRU Teacher Production Model",
+  innovation:"PTRU-DCAI Platform",
+  innovationSub:"Digital Competency-Based Assessment & Learning Analytics Platform",
   people:[
     {role:"หัวหน้าโครงการวิจัย", name:"ดร.ชัยมงคล ปินะสา",
      pos:"อาจารย์ประจำหลักสูตรครุศาสตรมหาบัณฑิต",
